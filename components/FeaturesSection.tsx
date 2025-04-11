@@ -3,8 +3,8 @@ import React from "react";
 
 export function FeaturesSection() {
   return (
-    <section className="">
-      <div className="flex justify-center max-md:px-5 items-center mt-28 mb-28 w-full max-md:mt-10 max-md:max-w-full">
+    <section>
+      <div className="flex justify-center max-md:px-5 items-center mb-24 w-full max-md:mt-10 max-md:max-w-full">
       <div className="flex max-md:flex-col justify-center gap-6">
         <article className="w-[30%] max-md:ml-0 max-md:w-full">
           <div className=" hover:border-yellow-300 px-4 py-24 text-xl text-center text-white rounded-3xl border-gray-700 border-solid border-4 max-md:px-2 max-md:pt-24">
@@ -52,9 +52,6 @@ export function FeaturesSection() {
          Take control of your energy today. Explore real-time data and optimize your solar power system for maximum savings
           </p>
         </div>
-      </div>
-      <div className="border-1 my-10 border-solid border-gray-800 ">
-
       </div>
     </section>
     
