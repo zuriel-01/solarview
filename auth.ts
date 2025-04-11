@@ -54,7 +54,7 @@ export const authConfig: NextAuthConfig = {
 
         // In a real app, you would query your database
         const user = mockUsers.find(
-          (u) => u.email.toLowerCase() === credentials.email.toLowerCase()
+          (u) => u.email.toLowerCase() === (credentials.email as string).toLowerCase()
         );
 
         if (!user) return null;
