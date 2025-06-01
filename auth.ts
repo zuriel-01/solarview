@@ -13,7 +13,7 @@ const mockUsers = [
   },
 ];
 
-export const authConfig: NextAuthConfig = {
+export const authConfig = {
   pages: {
     signIn: "/auth/login",
   },
@@ -21,10 +21,15 @@ export const authConfig: NextAuthConfig = {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
       const isOnData = nextUrl.pathname.startsWith("/data");
+      const isOnAuth = nextUrl.pathname.startsWith("/auth");
+
       if (isOnData) {
         if (isLoggedIn) return true;
         return false; // Redirect to login page
-      } else if (isLoggedIn) {
+      } else if (isOnAuth) {
+        if (isLoggedIn) {
+          return Response.redirect(new URL("/", nextUrl));
+        }
         return true;
       }
       return true;
@@ -70,6 +75,6 @@ export const authConfig: NextAuthConfig = {
       },
     }),
   ],
-};
+} satisfies NextAuthConfig;
 
 export const { handlers, signIn, signOut, auth } = NextAuth(authConfig);

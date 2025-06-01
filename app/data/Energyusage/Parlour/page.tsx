@@ -1,114 +1,3 @@
-// import { StepBackIcon } from 'lucide-react'
-// import Link from 'next/link'
-// import React from 'react'
-
-// const page = () => {
-//   return (
-//     <div className="bg-gray-50 h-16">
-//     <div className="mx-auto px-10">
-//       <div className="flex justify-between py-6 ">
-//       <Link href="/data/Energyusage">
-//               <StepBackIcon size={45} className="text-black p-2" />
-//             </Link>
-//         <h1 className="text-2xl font-bold text-gray-900">Solar Panel Data</h1>
-//         <h1 className='text-2xl font-bold text-gray-900'>Parlour</h1>
-
-//   </div>
-//   </div>
-//   </div>
-//   )
-// }
-
-// export default page
-
-
-// 'use client'
-
-// import { useEffect, useState } from 'react';
-// import { Bar } from 'react-chartjs-2';
-// import { Button } from '@/components/ui/button';
-// import solarData from '@/app/data/solarData.json';
-// import { CategoryScale, Chart, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
-
-// Chart.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
-
-// // Appliance ratings in Watts and usage hours/day
-// const applianceRatings = {
-//   fan: 75,        // W, 1 fan, 8 hrs/day
-//   tv: 100,        // W, 5 hrs/day
-//   bulb: 20 * 3    // W, 3 bulbs, 8 hrs/day
-// };
-
-// // Usage spread across 24 hours
-// const hourlyUsageFactors = {
-//   fan: 8 / 24,
-//   tv: 5 / 24,
-//   bulb: 8 / 24
-// };
-
-// const getEnergyUsage = () => {
-//   return (
-//     (applianceRatings.fan * hourlyUsageFactors.fan +
-//       applianceRatings.tv * hourlyUsageFactors.tv +
-//       applianceRatings.bulb * hourlyUsageFactors.bulb) / 1000
-//   );
-// };
-
-// export default function ParlourEnergyUsage() {
-//   const [range, setRange] = useState<'daily' | 'monthly' | 'yearly'>('daily');
-//   const [labels, setLabels] = useState<string[]>([]);
-//   const [values, setValues] = useState<number[]>([]);
-
-//   useEffect(() => {
-//     // Removed unused SolarData type
-//     const solar = solarData.map((d) => ({
-//       time: d.timestamp,
-//       value: getEnergyUsage() // Assuming getEnergyUsage() calculates the value for each entry
-//     }));
-
-//     const groupBy = {
-//       daily: 24,
-//       monthly: 24 * 30,
-//       yearly: 24 * 365
-//     };
-
-//     const count = groupBy[range];
-//     const grouped = solar.slice(0, count);
-//     setLabels(grouped.map(d => d.time));
-//     setValues(grouped.map(d => d.value));
-//   }, [range]);
-
-//   return (
-//     <div className="p-6">
-//       <h2 className="text-xl font-semibold mb-4">Parlour Energy Usage</h2>
-//       <Bar
-//         data={{
-//           labels,
-//           datasets: [
-//             {
-//               label: 'Energy Usage (kWh)',
-//               data: values,
-//               backgroundColor: '#10b981'
-//             }
-//           ]
-//         }}
-//         options={{
-//           responsive: true,
-//           plugins: {
-//             legend: { display: true }
-//           }
-//         }}
-//       />
-//       <div className="flex gap-2 mt-4">
-//         <Button onClick={() => setRange('daily')}>Today</Button>
-//         <Button onClick={() => setRange('monthly')}>This Month</Button>
-//         <Button onClick={() => setRange('yearly')}>This Year</Button>
-//       </div>
-//     </div>
-//   );
-// }
-
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -130,9 +19,18 @@ import solarData from '@/app/data/solarData.json';
 ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend);
 
 const applianceInfo = {
-  fan: { power: 75, hours: 6 },  // 6 hours/day
-  TV: { power: 150, hours: 4 },  // 4 hours/day
-  bulbs: { power: 10 * 3, hours: 5 },  // 5 hours/day for 3 bulbs
+  fan: {
+    power: 45,
+    usagePattern: Array.from({ length: 24 }, (_, hour) => hour >= 11 && hour < 17),
+  },
+  TV: {
+    power: 90,
+    usagePattern: Array.from({ length: 24 }, (_, hour) => hour >= 16 && hour < 23),
+  },
+  bulbs: {
+    power: 18,
+    usagePattern: Array.from({ length: 24 }, (_, hour) => hour >= 18 && hour < 23),
+  },
 };
 
 const months = [
@@ -140,12 +38,23 @@ const months = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
+const monthAbbr = months.map(m => m.slice(0, 3).toUpperCase());
+
+interface UsageData {
+  time: string;
+  date: Date;
+  fan: number;
+  TV: number;
+  bulbs: number;
+}
+
 export default function ParlourEnergyUsage() {
   const [selectedMonth, setSelectedMonth] = useState<number>(0);
   const [selectedDay, setSelectedDay] = useState<number>(1);
   const [view, setView] = useState<'daily' | 'monthly' | 'yearly'>('daily');
   const [datasets, setDatasets] = useState<ChartDataset<'line'>[]>([]);
   const [labels, setLabels] = useState<string[]>([]);
+  const [totalUsage, setTotalUsage] = useState<number>(0);
 
   const getDateLabel = () => {
     if (view === 'daily') {
@@ -165,24 +74,95 @@ export default function ParlourEnergyUsage() {
       } else if (view === 'monthly') {
         return date.getMonth() === selectedMonth;
       }
-      return true; // yearly view
+      return true;
     });
 
-    const hourlyUsage = filtered.map((entry) => {
-      const hour = new Date(entry.timestamp).getHours();
+    let usageTotal = 0;
+    let hourlyUsage: UsageData[] = [];
+
+    hourlyUsage = filtered.map((entry) => {
+      const date = new Date(entry.timestamp);
+      const hour = date.getHours();
       const usage: Record<keyof typeof applianceInfo, number> = {} as Record<keyof typeof applianceInfo, number>;
-      for (const [appliance, { power, hours }] of Object.entries(applianceInfo)) {
-        const active = hours / 24;
-        const randomFactor = 0.85 + Math.random() * 0.3; // adds some noise
-        usage[appliance as keyof typeof applianceInfo] = (power * active * randomFactor) / 1000; // kWh
+
+      for (const [appliance, { power, usagePattern }] of Object.entries(applianceInfo)) {
+        if (usagePattern[hour]) {
+          const variation = 0.9 + Math.random() * 0.2;
+          const value = (power * variation) / 1000;
+          usage[appliance as keyof typeof applianceInfo] = value;
+          usageTotal += value;
+        } else {
+          usage[appliance as keyof typeof applianceInfo] = 0;
+        }
       }
+
       return {
         time: `${hour.toString().padStart(2, '0')}:00`,
+        date,
         ...usage,
-      };
+      } as UsageData;
     });
 
-    const allLabels = hourlyUsage.map(d => d.time);
+    setTotalUsage(usageTotal);
+
+    let allLabels: string[];
+    if (view === 'daily') {
+      allLabels = hourlyUsage.map(d => d.time);
+    } else if (view === 'monthly') {
+      const daysInMonth = new Date(2024, selectedMonth + 1, 0).getDate();
+      const dailyTotals = Array(daysInMonth).fill(0).map(() => Array(Object.keys(applianceInfo).length).fill(0));
+      const dailyCounts = Array(daysInMonth).fill(0);
+
+      hourlyUsage.forEach(usage => {
+        const dayOfMonth = usage.date.getDate() - 1; // 0-based index
+        dailyCounts[dayOfMonth]++;
+        Object.keys(applianceInfo).forEach((appliance, idx) => {
+          dailyTotals[dayOfMonth][idx] += usage[appliance as keyof typeof applianceInfo];
+        });
+      });
+
+      dailyTotals.forEach((day, i) => {
+        day.forEach((_, idx) => {
+          day[idx] = dailyCounts[i] ? day[idx] / dailyCounts[i] : 0;
+        });
+      });
+
+      allLabels = Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
+      hourlyUsage = dailyTotals.map((day, i) => ({
+        time: (i + 1).toString(),
+        date: new Date(),
+        fan: day[0],
+        TV: day[1],
+        bulbs: day[2]
+      }));
+    } else {
+      const monthlyAverages = Array(12).fill(0).map(() => Array(Object.keys(applianceInfo).length).fill(0));
+      const monthCounts = Array(12).fill(0);
+
+      hourlyUsage.forEach(usage => {
+        const month = usage.date.getMonth();
+        monthCounts[month]++;
+        Object.keys(applianceInfo).forEach((appliance, idx) => {
+          monthlyAverages[month][idx] += usage[appliance as keyof typeof applianceInfo];
+        });
+      });
+
+      monthlyAverages.forEach((month, i) => {
+        month.forEach((_, idx) => {
+          month[idx] = monthCounts[i] ? month[idx] / monthCounts[i] : 0;
+        });
+      });
+
+      allLabels = monthAbbr;
+      hourlyUsage = monthlyAverages.map((month, i) => ({
+        time: monthAbbr[i],
+        date: new Date(),
+        fan: month[0],
+        TV: month[1],
+        bulbs: month[2]
+      }));
+    }
+
     const datasets: ChartDataset<'line'>[] = Object.keys(applianceInfo).map((appliance, idx) => {
       const colors = ['#f59e0b', '#ef4444', '#10b981', '#6366f1'];
       return {
@@ -254,13 +234,37 @@ export default function ParlourEnergyUsage() {
         data={{ labels, datasets }}
         options={{
           responsive: true,
-          plugins: { legend: { position: 'top' } },
+          plugins: {
+            legend: { position: 'top' },
+            tooltip: { enabled: true },
+          },
           scales: {
-            y: { title: { display: true, text: 'kWh' } },
+            y: {
+              title: { display: true, text: 'kWh' },
+              min: 0,
+              max: view === 'daily' ? 1.4 : 1
+            },
           },
         }}
       />
+
+      {/* Summary Panel */}
+      <div className="mt-6 p-4 border rounded shadow-md">
+        <h3 className="text-lg font-bold">Summary</h3>
+        <ul className="mt-2 space-y-2">
+          {datasets.map((dataset) => {
+            const total = (dataset.data as number[]).reduce((sum, val) => sum + val, 0);
+            return (
+              <li key={dataset.label}>
+                <strong>{dataset.label}:</strong> {total.toFixed(2)} kWh
+              </li>
+            );
+          })}
+          <li>
+            <strong>Total appliance usage:</strong> {totalUsage.toFixed(2)} kWh
+          </li>
+        </ul>
+      </div>
     </div>
   );
 }
-
