@@ -8,13 +8,11 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
-const geistMono = Poppins({
+const poppins = Poppins({
   variable: "--font-poppins",
   weight: "400",
   subsets: ["latin"],
 });
-
-
 
 export const metadata: Metadata = {
   title: "SolarView",
@@ -29,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased font-mono`}
+        className={`${geistSans.variable} ${poppins.variable} antialiased font-sans`}
       >
         <SessionProvider>{children}</SessionProvider>
       </body>

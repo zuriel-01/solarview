@@ -1,19 +1,6 @@
 import React from "react";
-import Link from "next/link";
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 
 export function HeroSection() {
-  const { data: session } = useSession();
-  const router = useRouter();
-
-  const handleOptimizationTipsClick = (e: React.MouseEvent) => {
-    if (!session) {
-      e.preventDefault();
-      router.push('/auth/login');
-    }
-  };
-
   return (
     <section className="mt-28 flex flex-col">
       <h2 className="text-7xl text-white text-center max-md:text-[55px] max-md:mt-24 ">
@@ -22,16 +9,6 @@ export function HeroSection() {
         Monitor your system&apos;s performance and get daily insights
       </p>
       </h2> 
-  
-      <div className="flex justify-center mt-20">
-        <Link href="/data/Optimizationtips" onClick={handleOptimizationTipsClick}>
-          <button className="px-8 py-4 border-2 border-yellow-300 border-solid rounded-4xl hover:bg-yellow-300 hover:text-gray-950 transition-colors">
-            <p className="text-white hover:text-gray-950 text-lg">
-              Get Optimization Tips
-            </p>
-          </button>
-        </Link>
-      </div>
     
     <div className="relative">
     <div       

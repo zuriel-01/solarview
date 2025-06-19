@@ -1,11 +1,12 @@
 "use client";
 
 import { AlignJustify, Radar, X, LogOut } from "lucide-react"
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { format } from 'date-fns';
+import { supabase } from '@/supabase';
+import type { Session } from '@supabase/supabase-js';
 
 interface Notification {
   id: number;
@@ -27,8 +28,24 @@ export const Header = () => {
   const [selectedDay, setSelectedDay] = useState<string>('01');
   const [selectedDate, setSelectedDate] = useState<string>('2024-01-01');
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [session, setSession] = useState<Session | null>(null);
   const router = useRouter();
-  const { data: session } = useSession();
+
+  useEffect(() => {
+    // Get initial session
+    const getSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+    };
+    getSession();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -36,15 +53,15 @@ export const Header = () => {
 
   const toggleDataSubmenu = () => {
     if (!session) {
-      router.push('/auth/login');
+      router.replace('/auth/login');
       return;
     }
     setIsDataOpen(!isDataOpen);
   };
 
   const handleLogout = async () => {
-    await signOut({ redirect: false });
-    router.push('/auth/login');
+    await supabase.auth.signOut();
+    router.push('/');
   };
 
   const handleDateSelect = async (date: Date) => {
@@ -116,11 +133,11 @@ export const Header = () => {
           <AlignJustify className="ml-auto md:hidden cursor-pointer" onClick={toggleMenu} />
         </div>
         <nav className="flex items-center gap-10 max-md:hidden">
-          <Link href="/" className="hover:text-yellow-300 transition-colors">
+          <Link href="/home" className="hover:text-yellow-300 transition-colors">
             Home
           </Link>
-          <Link href="/about" className="hover:text-yellow-300 transition-colors">
-            About
+          <Link href="/data/Settings" className="hover:text-yellow-300 transition-colors">
+            Settings
           </Link>
           <div className="relative group">
             <button onClick={toggleDataSubmenu} className="hover:text-yellow-300 transition-colors">
@@ -201,11 +218,11 @@ export const Header = () => {
               <X className="text-white cursor-pointer" onClick={toggleMenu} />
             </div>
             <div className="flex flex-col items-center gap-8 mt-10 text-2xl">
-              <Link href="/" className="hover:text-yellow-300 transition-colors" onClick={toggleMenu}>
+              <Link href="/home" className="hover:text-yellow-300 transition-colors" onClick={toggleMenu}>
                 Home
               </Link>
-              <Link href="/about" className="hover:text-yellow-300 transition-colors" onClick={toggleMenu}>
-                About
+              <Link href="/data/Settings" className="hover:text-yellow-300 transition-colors" onClick={toggleMenu}>
+                Settings
               </Link>
               <div className="relative">
                 <button 
