@@ -37,7 +37,7 @@ interface DayData {
   systemSizeKw: number;
   hourlyData: Array<{
     hour: number;
-    ALLSKY_SFC_SW_DWN: number;
+    "corrected_irradiance_kWh/m2": number;
     solar: number;
     load: number;
     soc: number;
@@ -93,8 +93,8 @@ const createOptimizationTips = (systemConfig: SystemConfig): Tip[] => [
     description: '☁️ Solar output was low today. Limit appliance use during early or late hours, or consider a backup energy plan on cloudy days.',
     condition: (data: DayData) => {
       const avgIrradiance = data.hourlyData.reduce((sum, hour) => 
-        sum + hour.ALLSKY_SFC_SW_DWN, 0) / data.hourlyData.length;
-      return avgIrradiance < 0.15;
+        sum + hour["corrected_irradiance_kWh/m2"], 0) / data.hourlyData.length;
+      return avgIrradiance < 0.1; // More sensitive threshold
     }
   },
   {
@@ -105,9 +105,9 @@ const createOptimizationTips = (systemConfig: SystemConfig): Tip[] => [
     description: '⚡ Solar generation peaked midday but wasn\'t fully used. Shift some appliance use (e.g., ironing or TV) into 10:00–14:00.',
     condition: (data: DayData) => {
       const peakHours = data.hourlyData.filter(h => h.hour >= 10 && h.hour <= 14);
-      const highIrradiance = peakHours.some(h => h.ALLSKY_SFC_SW_DWN > 0.3);
-      const lowLoad = peakHours.every(h => h.load < (data.systemSizeKw * 0.3));
-      return highIrradiance && lowLoad;
+      const highIrradiance = peakHours.some(h => h["corrected_irradiance_kWh/m2"] > 0.2);
+      const lowLoad = peakHours.every(h => h.load < (data.systemSizeKw * 0.4));
+      return highIrradiance && lowLoad && peakHours.length > 0;
     }
   },
   {
@@ -117,7 +117,7 @@ const createOptimizationTips = (systemConfig: SystemConfig): Tip[] => [
     title: 'Battery Entered Low State',
     description: '🔴 Battery dropped to critical levels today. Try moving high-consumption appliances to daylight hours when solar is available.',
     condition: (data: DayData) => {
-      return data.hourlyData.some(h => h.soc <= data.minSoCKwh);
+      return data.hourlyData.some(h => h.soc <= data.minSoCKwh * 1.1); // Within 10% of minimum
     }
   },
   {
@@ -129,9 +129,9 @@ const createOptimizationTips = (systemConfig: SystemConfig): Tip[] => [
     condition: (data: DayData) => {
       const fullHours = data.hourlyData.filter(h => 
         h.hour >= 9 && h.hour <= 16 && // Daylight hours
-        h.soc >= data.batteryCapacityKwh * 0.9 // 90% of capacity
+        h.soc >= data.batteryCapacityKwh * 0.85 // 85% of capacity
       ).length;
-      return fullHours > 3;
+      return fullHours > 4; // More than 4 hours
     }
   },
   {
@@ -145,7 +145,7 @@ const createOptimizationTips = (systemConfig: SystemConfig): Tip[] => [
         const highPowerActive = h.activeAppliances.some(app => 
           app.power >= 400 && app.isActive
         );
-        return highPowerActive && h.ALLSKY_SFC_SW_DWN < 0.15;
+        return highPowerActive && h["corrected_irradiance_kWh/m2"] < 0.1;
       });
     }
   },
@@ -153,12 +153,12 @@ const createOptimizationTips = (systemConfig: SystemConfig): Tip[] => [
     id: 6,
     category: 'appliance',
     icon: <Plug className="w-5 h-5 text-blue-500" />,
-    title: 'Appliance Load Caused Peak Discharge',
-    description: '💡 A high load period caused heavy battery discharge. Avoid clustering multiple appliances at the same time.',
+    title: 'High Load Period Detected',
+    description: '💡 A high load period caused significant battery usage. Try to spread out appliance usage throughout the day.',
     condition: (data: DayData) => {
-      const avgSystemLoad = data.systemSizeKw * 0.6; // 60% of system capacity
+      const avgSystemLoad = data.systemSizeKw * 0.4; // 40% of system capacity
       return data.hourlyData.some(h => 
-        h.load > avgSystemLoad && (h.prevSoc - h.soc) > (data.batteryCapacityKwh * 0.2)
+        h.load > avgSystemLoad && (h.prevSoc - h.soc) > (data.batteryCapacityKwh * 0.1)
       );
     }
   },
@@ -166,77 +166,76 @@ const createOptimizationTips = (systemConfig: SystemConfig): Tip[] => [
     id: 7,
     category: 'system',
     icon: <LineChart className="w-5 h-5 text-purple-500" />,
-    title: 'Solar Barely Covered Load',
-    description: '📉 Solar generation just covered your household load. Reduce high-power usage during early or late hours.',
+    title: 'Energy Balance Could Be Better',
+    description: '📉 Your solar generation and household load were closely matched. Consider optimizing usage timing for better efficiency.',
     condition: (data: DayData) => {
       let closeMatchCount = 0;
       data.hourlyData.forEach(h => {
-        if (Math.abs(h.solar - h.load) < (data.systemSizeKw * 0.1)) closeMatchCount++;
+        if (h.solar > 0 && Math.abs(h.solar - h.load) < (data.systemSizeKw * 0.15)) closeMatchCount++;
       });
-      return closeMatchCount > (data.hourlyData.length / 2);
+      return closeMatchCount > (data.hourlyData.length / 3);
     }
   },
   {
     id: 8,
     category: 'system',
     icon: <LineChart className="w-5 h-5 text-purple-500" />,
-    title: 'Battery Covered Load All Day',
-    description: '🪫 Battery handled most of the day\'s usage. Shift more load to daylight when solar is available.',
+    title: 'Battery Dependent Day',
+    description: '🪫 Battery provided most of today\'s energy. Try to shift more usage to peak solar hours (10:00-15:00).',
     condition: (data: DayData) => {
       let batteryDependentCount = 0;
       data.hourlyData.forEach(h => {
         if (h.solar < h.load && h.soc < h.prevSoc) batteryDependentCount++;
       });
-      return batteryDependentCount > (data.hourlyData.length / 2);
+      return batteryDependentCount > (data.hourlyData.length * 0.4); // 40% of the day
     }
   },
   {
     id: 9,
     category: 'system',
     icon: <Sun className="w-5 h-5 text-green-500" />,
-    title: 'Perfect Energy Day',
-    description: '✨ Great energy management today! Your solar system efficiently covered your household needs with optimal battery usage.',
+    title: 'Great Energy Management!',
+    description: '✨ Excellent energy balance today! Your solar system efficiently met your household needs with good battery utilization.',
     condition: (data: DayData) => {
-      // Show this tip when no other tips are triggered (fallback tip)
+      // Show this tip when no other significant issues are detected
       const otherTips = [1, 2, 3, 4, 5, 6, 7, 8];
       return !otherTips.some(tipId => {
-        const tip = data;
         switch(tipId) {
-          case 1: return data.hourlyData.reduce((sum, hour) => sum + hour.ALLSKY_SFC_SW_DWN, 0) / data.hourlyData.length < 0.15;
+          case 1: return data.hourlyData.reduce((sum, hour) => sum + hour["corrected_irradiance_kWh/m2"], 0) / data.hourlyData.length < 0.1;
           case 2: {
             const peakHours = data.hourlyData.filter(h => h.hour >= 10 && h.hour <= 14);
-            const highIrradiance = peakHours.some(h => h.ALLSKY_SFC_SW_DWN > 0.3);
-            const lowLoad = peakHours.every(h => h.load < (data.systemSizeKw * 0.3));
-            return highIrradiance && lowLoad;
+            const highIrradiance = peakHours.some(h => h["corrected_irradiance_kWh/m2"] > 0.2);
+            const lowLoad = peakHours.every(h => h.load < (data.systemSizeKw * 0.4));
+            return highIrradiance && lowLoad && peakHours.length > 0;
           }
-          case 3: return data.hourlyData.some(h => h.soc <= data.minSoCKwh);
+          case 3: return data.hourlyData.some(h => h.soc <= data.minSoCKwh * 1.1);
           case 4: {
             const fullHours = data.hourlyData.filter(h => 
-              h.hour >= 9 && h.hour <= 16 && h.soc >= data.batteryCapacityKwh * 0.9
+              h.hour >= 9 && h.hour <= 16 && h.soc >= data.batteryCapacityKwh * 0.85
             ).length;
-            return fullHours > 3;
+            return fullHours > 4;
           }
           case 5: return data.hourlyData.some(h => {
             const highPowerActive = h.activeAppliances.some(app => app.power >= 400 && app.isActive);
-            return highPowerActive && h.ALLSKY_SFC_SW_DWN < 0.15;
+            return highPowerActive && h["corrected_irradiance_kWh/m2"] < 0.1;
           });
           case 6: {
-            const avgSystemLoad = data.systemSizeKw * 0.6;
-            return data.hourlyData.some(h => h.load > avgSystemLoad && (h.prevSoc - h.soc) > (data.batteryCapacityKwh * 0.2));
+            const avgSystemLoad = data.systemSizeKw * 0.4;
+            return data.hourlyData.some(h => h.load > avgSystemLoad && (h.prevSoc - h.soc) > (data.batteryCapacityKwh * 0.1));
           }
           case 7: {
             let closeMatchCount = 0;
             data.hourlyData.forEach(h => {
-              if (Math.abs(h.solar - h.load) < (data.systemSizeKw * 0.1)) closeMatchCount++;
+              if (h.solar > 0 && Math.abs(h.solar - h.load) < (data.systemSizeKw * 0.15)) closeMatchCount++;
             });
-            return closeMatchCount > (data.hourlyData.length / 2);
+            return closeMatchCount > (data.hourlyData.length / 3);
           }
           case 8: {
             let batteryDependentCount = 0;
             data.hourlyData.forEach(h => {
               if (h.solar < h.load && h.soc < h.prevSoc) batteryDependentCount++;
             });
-            return batteryDependentCount > (data.hourlyData.length / 2);
+            return batteryDependentCount > (data.hourlyData.length * 0.4);
           }
           default: return false;
         }
@@ -322,7 +321,7 @@ export default function OptimizationTips() {
   const getDayData = (month: number, day: number): DayData | null => {
     if (!systemConfig || appliances.length === 0) return null;
 
-    const data = solarData as Array<{ timestamp: string; ALLSKY_SFC_SW_DWN: number }>;
+    const data = solarData as Array<{ timestamp: string; "corrected_irradiance_kWh/m2": number }>;
     const dayData = data.filter(entry => {
       const date = new Date(entry.timestamp);
       return date.getMonth() === month && date.getDate() === day;
@@ -344,11 +343,11 @@ export default function OptimizationTips() {
       name: `${appliance.room}_${appliance.appliance_name}`
     }));
 
-    let currentSoC = batteryCapacityKwh; // Start at full capacity
+    let currentSoC = batteryCapacityKwh * 0.6; // Start at 60% instead of full capacity
     const hourlyData = dayData.map(entry => {
       const date = new Date(entry.timestamp);
       const hour = date.getHours();
-      const solar = Math.max(0, entry.ALLSKY_SFC_SW_DWN) * systemSizeKw * efficiency;
+      const solar = Math.max(0, entry["corrected_irradiance_kWh/m2"]) * systemSizeKw * efficiency;
       
       let load = 0;
       const activeAppliances: Array<{ name: string; power: number; isActive: boolean }> = [];
@@ -368,26 +367,34 @@ export default function OptimizationTips() {
         }
       }
 
+      // Add base household load even when no specific appliances are running
+      const baseLoad = 0.1; // 100W base load for always-on devices
+      load += baseLoad;
+
       const prevSoC = currentSoC;
 
-      // Update battery state using user's actual battery configuration
-      if (solar >= load) {
+      // Enhanced battery state logic with charging/discharging rate limits
+      if (solar > load) {
         const excess = solar - load;
         if (currentSoC < batteryCapacityKwh) {
-          const charge = Math.min(excess, batteryCapacityKwh - currentSoC);
+          // Charging rate limited to prevent instant charging
+          const maxChargeRate = batteryCapacityKwh * 0.2; // Max 20% per hour
+          const charge = Math.min(excess, batteryCapacityKwh - currentSoC, maxChargeRate);
           currentSoC += charge;
         }
       } else {
         const deficit = load - solar;
         if (currentSoC > minSoCKwh) {
-          const discharge = Math.min(deficit, currentSoC - minSoCKwh);
+          // Discharge rate limited for realistic battery behavior
+          const maxDischargeRate = batteryCapacityKwh * 0.3; // Max 30% per hour
+          const discharge = Math.min(deficit, currentSoC - minSoCKwh, maxDischargeRate);
           currentSoC -= discharge;
         }
       }
 
       return {
         hour,
-        ALLSKY_SFC_SW_DWN: entry.ALLSKY_SFC_SW_DWN,
+        "corrected_irradiance_kWh/m2": entry["corrected_irradiance_kWh/m2"],
         solar,
         load,
         soc: currentSoC,

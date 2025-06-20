@@ -46,7 +46,7 @@ interface Appliance {
 
 type SolarEntry = {
   timestamp: string;
-  ALLSKY_SFC_SW_DWN: number;
+  "corrected_irradiance_kWh/m2": number;
 };
 
 type BatterySummary = {
@@ -129,7 +129,7 @@ export default function BatteryStatusPage() {
     const systemSizeKw = (systemConfig.panel_rating * systemConfig.number_of_panels) / 1000;
     const efficiency = 0.75;
     
-    const solar = Math.max(0, entry.ALLSKY_SFC_SW_DWN) * systemSizeKw * efficiency;
+    const solar = Math.max(0, entry["corrected_irradiance_kWh/m2"]) * systemSizeKw * efficiency;
     
     let load = 0;
     for (const appliance of appliances) {
@@ -186,8 +186,8 @@ export default function BatteryStatusPage() {
         setSystemConfig(savedSystem);
         setAppliances(savedAppliances);
         
-        console.log('Loaded system config:', savedSystem);
-        console.log('Loaded appliances:', savedAppliances);
+        //console.log('Loaded system config:', savedSystem);
+        //console.log('Loaded appliances:', savedAppliances);
       } catch (error) {
         console.error('Error loading system configuration:', error);
         alert('Failed to load system configuration');
@@ -251,8 +251,8 @@ export default function BatteryStatusPage() {
     let peakLoad = 0;
     let peakHour = '';
 
-    // Initialize battery state
-    let soc = batteryCapacityKwh; // Start at full capacity
+    // Initialize battery state with more realistic starting level
+    let soc = batteryCapacityKwh * 0.6; // Start at 60% instead of 100%
     if (view === 'daily' && selectedDay > 1) {
       // For daily view, try to get realistic starting SoC from previous day
       const prevDay = new Date(filtered[0]?.timestamp || new Date());
@@ -266,7 +266,7 @@ export default function BatteryStatusPage() {
         const prevDayState = calculateBatteryState(prevDayData, soc, systemConfig, appliances);
         soc = prevDayState.soc;
       } else {
-        soc = batteryCapacityKwh * 0.8; // Start at 80% for realistic simulation
+        soc = batteryCapacityKwh * 0.7; // Start at 70% for daily view
       }
     }
 
@@ -284,7 +284,7 @@ export default function BatteryStatusPage() {
       const time = `${hour.toString().padStart(2, '0')}:00`;
       
       // Calculate solar generation using user's actual system
-      const irradiance = Math.max(0, entry.ALLSKY_SFC_SW_DWN);
+      const irradiance = Math.max(0, entry["corrected_irradiance_kWh/m2"]);
       const solar = irradiance * systemSizeKw * efficiency;
       
       // Calculate load using user's actual appliances
@@ -303,6 +303,10 @@ export default function BatteryStatusPage() {
         }
       }
 
+      // Add base household load even when no specific appliances are running
+      const baseLoad = 0.1; // 100W base load for always-on devices
+      load += baseLoad;
+
       totalDailyLoad += load;
       if (load > peakLoad) {
         peakLoad = load;
@@ -313,21 +317,40 @@ export default function BatteryStatusPage() {
       let charge = 0;
       let discharge = 0;
 
-      // Battery state logic
-      if (solar >= load) {
+      // Enhanced battery state logic with more realistic behavior
+      if (solar > load) {
         const excess = solar - load;
         if (soc < batteryCapacityKwh) {
-          charge = Math.min(excess, batteryCapacityKwh - soc);
+          // Charging rate limited to prevent instant charging
+          const maxChargeRate = batteryCapacityKwh * 0.2; // Max 20% per hour
+          charge = Math.min(excess, batteryCapacityKwh - soc, maxChargeRate);
           soc = Math.min(batteryCapacityKwh, soc + charge);
           chargeTotal += charge;
         }
       } else {
         const deficit = load - solar;
         if (soc > minSoCKwh) {
-          discharge = Math.min(deficit, soc - minSoCKwh);
+          // Discharge rate limited for realistic battery behavior
+          const maxDischargeRate = batteryCapacityKwh * 0.3; // Max 30% per hour
+          discharge = Math.min(deficit, soc - minSoCKwh, maxDischargeRate);
           soc = Math.max(minSoCKwh, soc - discharge);
           dischargeTotal += discharge;
         }
+      }
+
+      // Debug logging for first few hours
+      if (hourly.length < 5) {
+        // //console.log(`Hour ${time}:`, {
+        //   irradiance: irradiance.toFixed(3),
+        //   solar: solar.toFixed(3),
+        //   load: load.toFixed(3),
+        //   excess: (solar - load).toFixed(3),
+        //   startSOC: startHourSOC.toFixed(2),
+        //   endSOC: soc.toFixed(2),
+        //   charge: charge.toFixed(3),
+        //   discharge: discharge.toFixed(3),
+        //   activeAppliances: activeAppliances.length
+        // });
       }
 
       // Calculate percentages for visualization
@@ -557,25 +580,37 @@ export default function BatteryStatusPage() {
       });
     }
 
-    // Debug output
-    console.log('Battery Analysis:', {
-      date: `${selectedMonth + 1}/${selectedDay}/2024`,
-      systemSizeKw: systemSizeKw.toFixed(2),
-      batteryCapacityKwh: batteryCapacityKwh.toFixed(2),
-      totalDailyLoadKWh: totalDailyLoad.toFixed(2),
-      peakLoadKW: peakLoad.toFixed(2),
-      peakHour,
-      batteryStartPercent: ((startSOC / batteryCapacityKwh) * 100).toFixed(2),
-      batteryEndPercent: ((soc / batteryCapacityKwh) * 100).toFixed(2),
-      totalCharged: chargeTotal.toFixed(2),
-      totalDischarged: dischargeTotal.toFixed(2),
-    });
+    // Debug output with enhanced information
+    //console.log('Battery Analysis:', {
+    //   date: `${selectedMonth + 1}/${selectedDay}/2024`,
+    //   systemSizeKw: systemSizeKw.toFixed(2),
+    //   batteryCapacityKwh: batteryCapacityKwh.toFixed(2),
+    //   minSoCKwh: minSoCKwh.toFixed(2),
+    //   totalDailyLoadKWh: totalDailyLoad.toFixed(2),
+    //   peakLoadKW: peakLoad.toFixed(2),
+    //   peakHour,
+    //   batteryStartPercent: ((startSOC / batteryCapacityKwh) * 100).toFixed(2),
+    //   batteryEndPercent: ((soc / batteryCapacityKwh) * 100).toFixed(2),
+    //   totalCharged: chargeTotal.toFixed(2),
+    //   totalDischarged: dischargeTotal.toFixed(2),
+    //   dataPointsProcessed: filtered.length,
+    //   avgDailyIrradiance: (filtered.reduce((sum, entry) => sum + entry["corrected_irradiance_kWh/m2"], 0) / filtered.length).toFixed(3)
+    // });
 
-    console.log('Appliance Daily Usage (kWh):', 
-      Object.entries(applianceUsage)
-        .sort(([,a], [,b]) => b - a)
-        .map(([app, usage]) => `${app}: ${usage.toFixed(2)} kWh`)
-    );
+    //console.log('Appliance Daily Usage (kWh):', 
+    //   Object.entries(applianceUsage)
+    //     .sort(([,a], [,b]) => b - a)
+    //     .map(([app, usage]) => `${app}: ${usage.toFixed(2)} kWh`)
+    // );
+
+    // Check if we have realistic load patterns
+    if (totalDailyLoad < 1) {
+      console.warn('⚠️ Very low daily load detected. Check appliance configurations.');
+    }
+    
+    if (peakLoad < 0.5) {
+      console.warn('⚠️ Very low peak load. This might cause unrealistic battery behavior.');
+    }
 
   }, [selectedMonth, selectedDay, view, systemConfig, appliances]);
 
