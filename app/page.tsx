@@ -8,8 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 // import { getUserSolarSystem } from "@/lib/db";
 // import { saveSolarSystem } from "@/lib/db";
-import { supabase } from "@/supabase";
-
 export default function LandingPage() {
   const { user, loading } = useSession();
   const router = useRouter();

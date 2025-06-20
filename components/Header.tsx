@@ -199,7 +199,7 @@ export const Header = () => {
           </Link>
           {user ? (
             <>
-              <Link href="/data/Settings/ManageSystemAppliances" className="hover:text-yellow-300 transition-colors">
+              <Link href="/data/Settings" className="hover:text-yellow-300 transition-colors">
                 Settings
               </Link>
               <div className="relative group">

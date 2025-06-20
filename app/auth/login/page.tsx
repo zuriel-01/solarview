@@ -29,7 +29,7 @@ export default function Login() {
         // Wait a moment for session to be established
         setTimeout(() => {
           router.refresh();
-          router.push('/data/Settings/ManageSystemAppliances');
+          router.push('/home');
         }, 100);
       }
     } catch (error) {
