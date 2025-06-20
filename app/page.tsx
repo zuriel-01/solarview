@@ -8,8 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 // import { getUserSolarSystem } from "@/lib/db";
 // import { saveSolarSystem } from "@/lib/db";
-import { supabase } from "@/supabase";
-
 export default function LandingPage() {
   const { user, loading } = useSession();
   const router = useRouter();
@@ -24,16 +22,16 @@ export default function LandingPage() {
   async function init()  {
     if (!user) return;
 
-    try {
-      const {data, error} = await supabase.from("system_config").select().eq("user_id", user?.id);
-      if (error) throw error;
+    // try {
+    //   const {data, error} = await supabase.from("system_config").select().eq("user_id", user?.id);
+    //   if (error) throw error;
 
-      console.log(data);
-      if (!data.length) return router.push("/data/Settings/ManageSystemAppliances");
-      return router.push("/home");
-    } catch (error) {
-      console.error(error);
-    }
+    //   console.log(data);
+    //   if (!data.length) return router.push("/data/Settings/ManageSystemAppliances");
+    //   return router.push("/home");
+    // } catch (error) {
+    //   console.error(error);
+    // }
 
 
   }

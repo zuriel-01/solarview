@@ -409,22 +409,22 @@ export default function BatteryProjectionPage() {
                                                             tension: 0.1,
                                                             yAxisID: 'y',
                                                         },
-                                                        {
-                                                            label: 'Solar Generation (kW)',
-                                                            data: results.solarData,
-                                                            borderColor: '#22c55e',
-                                                            backgroundColor: '#22c55e',
-                                                            tension: 0.1,
-                                                            yAxisID: 'y1',
-                                                        },
-                                                        {
-                                                            label: 'Load (kW)',
-                                                            data: results.loadData,
-                                                            borderColor: '#ef4444',
-                                                            backgroundColor: '#ef4444',
-                                                            tension: 0.1,
-                                                            yAxisID: 'y1',
-                                                        },
+                                                        // {
+                                                        //     label: 'Solar Generation (kW)',
+                                                        //     data: results.solarData,
+                                                        //     borderColor: '#22c55e',
+                                                        //     backgroundColor: '#22c55e',
+                                                        //     tension: 0.1,
+                                                        //     yAxisID: 'y1',
+                                                        // },
+                                                        // {
+                                                        //     label: 'Load (kW)',
+                                                        //     data: results.loadData,
+                                                        //     borderColor: '#ef4444',
+                                                        //     backgroundColor: '#ef4444',
+                                                        //     tension: 0.1,
+                                                        //     yAxisID: 'y1',
+                                                        // },
                                                     ],
                                                 }}
                                                 options={{
