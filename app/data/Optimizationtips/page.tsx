@@ -1,15 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from 'next/navigation';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ChevronLeft, ChevronRight, Calendar, Zap, Sun, Battery, Plug, LineChart } from "lucide-react";
 import Link from "next/link";
 import type { ReactElement } from 'react';
 import solarData from '../solarData.json';
+import {
+  getUserSolarSystem,
+  getUserInitialAppliances,
+} from '@/lib/db';
+
+interface SystemConfig {
+  battery_capacity: number;
+  minimum_state_of_charge: number;
+  installation_year: number;
+  panel_rating: number;
+  number_of_panels: number;
+}
+
+interface Appliance {
+  id: string;
+  appliance_name: string;
+  wattage: number;
+  usage_hours: number;
+  room: string;
+}
 
 interface DayData {
   timestamp: string;
+  batteryCapacityKwh: number;
+  minSoCKwh: number;
+  systemSizeKw: number;
   hourlyData: Array<{
     hour: number;
     ALLSKY_SFC_SW_DWN: number;
@@ -34,7 +59,32 @@ interface Tip {
   condition: (data: DayData) => boolean;
 }
 
-const OPTIMIZATION_TIPS: Tip[] = [
+// Function to get appliance usage pattern based on type and room
+const getAppliancePattern = (applianceName: string, room: string, usageHours: number) => {
+  const name = applianceName.toLowerCase();
+  const roomLower = room.toLowerCase();
+  
+  if (roomLower === 'parlour') {
+    if (name.includes('fan')) return (h: number) => h >= 11 && h < 17;
+    if (name.includes('tv') || name.includes('television')) return (h: number) => h >= 16 && h < 23;
+    if (name.includes('light') || name.includes('bulb')) return (h: number) => h >= 18 && h < 23;
+  } else if (roomLower === 'kitchen') {
+    if (name.includes('fridge') || name.includes('refrigerator')) return (h: number) => h >= 9 && h < 21;
+    if (name.includes('microwave')) return (h: number) => h === 8 || h === 16;
+    if (name.includes('washing') || name.includes('washer')) return (h: number) => h >= 10 && h < 11.5;
+    if (name.includes('light') || name.includes('bulb')) return (h: number) => h >= 19 && h <= 23;
+  } else if (roomLower === 'bedroom') {
+    if (name.includes('ac') || name.includes('air condition')) return (h: number) => h >= 21 || h < 2;
+    if (name.includes('light') || name.includes('bulb')) return (h: number) => h >= 18 && h <= 23;
+    if (name.includes('laptop') || name.includes('computer')) return (h: number) => h >= 8 && h < 16;
+    if (name.includes('iron') || name.includes('pressing')) return (h: number) => h >= 13 && h < 14;
+  }
+  
+  // Default pattern based on usage hours
+  return (h: number) => h >= 6 && h < (6 + usageHours) % 24;
+};
+
+const createOptimizationTips = (systemConfig: SystemConfig): Tip[] => [
   {
     id: 1,
     category: 'weather',
@@ -44,7 +94,7 @@ const OPTIMIZATION_TIPS: Tip[] = [
     condition: (data: DayData) => {
       const avgIrradiance = data.hourlyData.reduce((sum, hour) => 
         sum + hour.ALLSKY_SFC_SW_DWN, 0) / data.hourlyData.length;
-      return avgIrradiance < 0.15; // Only show if average irradiance is below 0.15 kWh/m²
+      return avgIrradiance < 0.15;
     }
   },
   {
@@ -56,7 +106,7 @@ const OPTIMIZATION_TIPS: Tip[] = [
     condition: (data: DayData) => {
       const peakHours = data.hourlyData.filter(h => h.hour >= 10 && h.hour <= 14);
       const highIrradiance = peakHours.some(h => h.ALLSKY_SFC_SW_DWN > 0.3);
-      const lowLoad = peakHours.every(h => h.load < 0.3);
+      const lowLoad = peakHours.every(h => h.load < (data.systemSizeKw * 0.3));
       return highIrradiance && lowLoad;
     }
   },
@@ -67,7 +117,7 @@ const OPTIMIZATION_TIPS: Tip[] = [
     title: 'Battery Entered Low State',
     description: '🔴 Battery dropped to critical levels today. Try moving high-consumption appliances to daylight hours when solar is available.',
     condition: (data: DayData) => {
-      return data.hourlyData.some(h => h.soc <= BATTERY_CONFIG.minSoC);
+      return data.hourlyData.some(h => h.soc <= data.minSoCKwh);
     }
   },
   {
@@ -79,7 +129,7 @@ const OPTIMIZATION_TIPS: Tip[] = [
     condition: (data: DayData) => {
       const fullHours = data.hourlyData.filter(h => 
         h.hour >= 9 && h.hour <= 16 && // Daylight hours
-        h.soc >= BATTERY_CONFIG.usableCapacity * 0.9 // 90% of capacity
+        h.soc >= data.batteryCapacityKwh * 0.9 // 90% of capacity
       ).length;
       return fullHours > 3;
     }
@@ -106,8 +156,9 @@ const OPTIMIZATION_TIPS: Tip[] = [
     title: 'Appliance Load Caused Peak Discharge',
     description: '💡 A high load period caused heavy battery discharge. Avoid clustering multiple appliances at the same time.',
     condition: (data: DayData) => {
+      const avgSystemLoad = data.systemSizeKw * 0.6; // 60% of system capacity
       return data.hourlyData.some(h => 
-        h.load > 1.2 && (h.prevSoc - h.soc) > 1.0
+        h.load > avgSystemLoad && (h.prevSoc - h.soc) > (data.batteryCapacityKwh * 0.2)
       );
     }
   },
@@ -120,7 +171,7 @@ const OPTIMIZATION_TIPS: Tip[] = [
     condition: (data: DayData) => {
       let closeMatchCount = 0;
       data.hourlyData.forEach(h => {
-        if (Math.abs(h.solar - h.load) < 0.2) closeMatchCount++;
+        if (Math.abs(h.solar - h.load) < (data.systemSizeKw * 0.1)) closeMatchCount++;
       });
       return closeMatchCount > (data.hourlyData.length / 2);
     }
@@ -137,6 +188,59 @@ const OPTIMIZATION_TIPS: Tip[] = [
         if (h.solar < h.load && h.soc < h.prevSoc) batteryDependentCount++;
       });
       return batteryDependentCount > (data.hourlyData.length / 2);
+    }
+  },
+  {
+    id: 9,
+    category: 'system',
+    icon: <Sun className="w-5 h-5 text-green-500" />,
+    title: 'Perfect Energy Day',
+    description: '✨ Great energy management today! Your solar system efficiently covered your household needs with optimal battery usage.',
+    condition: (data: DayData) => {
+      // Show this tip when no other tips are triggered (fallback tip)
+      const otherTips = [1, 2, 3, 4, 5, 6, 7, 8];
+      return !otherTips.some(tipId => {
+        const tip = data;
+        switch(tipId) {
+          case 1: return data.hourlyData.reduce((sum, hour) => sum + hour.ALLSKY_SFC_SW_DWN, 0) / data.hourlyData.length < 0.15;
+          case 2: {
+            const peakHours = data.hourlyData.filter(h => h.hour >= 10 && h.hour <= 14);
+            const highIrradiance = peakHours.some(h => h.ALLSKY_SFC_SW_DWN > 0.3);
+            const lowLoad = peakHours.every(h => h.load < (data.systemSizeKw * 0.3));
+            return highIrradiance && lowLoad;
+          }
+          case 3: return data.hourlyData.some(h => h.soc <= data.minSoCKwh);
+          case 4: {
+            const fullHours = data.hourlyData.filter(h => 
+              h.hour >= 9 && h.hour <= 16 && h.soc >= data.batteryCapacityKwh * 0.9
+            ).length;
+            return fullHours > 3;
+          }
+          case 5: return data.hourlyData.some(h => {
+            const highPowerActive = h.activeAppliances.some(app => app.power >= 400 && app.isActive);
+            return highPowerActive && h.ALLSKY_SFC_SW_DWN < 0.15;
+          });
+          case 6: {
+            const avgSystemLoad = data.systemSizeKw * 0.6;
+            return data.hourlyData.some(h => h.load > avgSystemLoad && (h.prevSoc - h.soc) > (data.batteryCapacityKwh * 0.2));
+          }
+          case 7: {
+            let closeMatchCount = 0;
+            data.hourlyData.forEach(h => {
+              if (Math.abs(h.solar - h.load) < (data.systemSizeKw * 0.1)) closeMatchCount++;
+            });
+            return closeMatchCount > (data.hourlyData.length / 2);
+          }
+          case 8: {
+            let batteryDependentCount = 0;
+            data.hourlyData.forEach(h => {
+              if (h.solar < h.load && h.soc < h.prevSoc) batteryDependentCount++;
+            });
+            return batteryDependentCount > (data.hourlyData.length / 2);
+          }
+          default: return false;
+        }
+      });
     }
   }
 ];
@@ -157,21 +261,67 @@ const MONTHS = [
   { short: "DEC", full: "December", days: 31 },
 ];
 
-// Battery configuration
-const BATTERY_CONFIG = {
-  usableCapacity: 5.0, // kWh
-  minSoC: 1.0, // kWh (20% of capacity)
-  maxSoC: 6.0, // kWh
-  efficiency: 0.75,
-};
-
-const SYSTEM_SIZE = 2.0; // kW
-
 export default function OptimizationTips() {
   const [selectedMonth, setSelectedMonth] = useState(MONTHS[0]);
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
+  const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
+  const [appliances, setAppliances] = useState<Appliance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const [optimizationTips, setOptimizationTips] = useState<Tip[]>([]);
+  
+  const router = useRouter();
+  const supabase = createClientComponentClient();
+
+  // Load user and system configuration
+  useEffect(() => {
+    const loadUserAndSystem = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError || !session?.user) {
+          router.push('/auth/login');
+          return;
+        }
+
+        setUser(session.user);
+
+        // Load system configuration and appliances
+        const [savedSystem, savedAppliances] = await Promise.all([
+          getUserSolarSystem(session.user, supabase),
+          getUserInitialAppliances(session.user, supabase)
+        ]);
+        
+        if (!savedSystem) {
+          alert('Please configure your solar system first');
+          router.push('/data/Settings/ManageSystemAppliances');
+          return;
+        }
+
+        setSystemConfig(savedSystem);
+        setAppliances(savedAppliances);
+        
+        // Create personalized optimization tips based on user's system
+        const tips = createOptimizationTips(savedSystem);
+        setOptimizationTips(tips);
+        
+        console.log('Loaded system config:', savedSystem);
+        console.log('Loaded appliances:', savedAppliances);
+      } catch (error) {
+        console.error('Error loading system configuration:', error);
+        alert('Failed to load system configuration');
+        router.push('/data/Settings/ManageSystemAppliances');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadUserAndSystem();
+  }, [router, supabase]);
 
   const getDayData = (month: number, day: number): DayData | null => {
+    if (!systemConfig || appliances.length === 0) return null;
+
     const data = solarData as Array<{ timestamp: string; ALLSKY_SFC_SW_DWN: number }>;
     const dayData = data.filter(entry => {
       const date = new Date(entry.timestamp);
@@ -180,60 +330,57 @@ export default function OptimizationTips() {
 
     if (dayData.length === 0) return null;
 
-    let currentSoC = BATTERY_CONFIG.usableCapacity;
+    // Calculate system parameters from user's actual configuration
+    const batteryCapacityKwh = (systemConfig.battery_capacity * 12) / 1000; // Convert Ah to kWh (assuming 12V)
+    const minSoCPercent = systemConfig.minimum_state_of_charge;
+    const minSoCKwh = (batteryCapacityKwh * minSoCPercent) / 100;
+    const systemSizeKw = (systemConfig.panel_rating * systemConfig.number_of_panels) / 1000;
+    const efficiency = 0.75;
+
+    // Create appliance patterns from user's actual appliances
+    const appliancePatterns = appliances.map(appliance => ({
+      power: appliance.wattage,
+      pattern: getAppliancePattern(appliance.appliance_name, appliance.room, appliance.usage_hours),
+      name: `${appliance.room}_${appliance.appliance_name}`
+    }));
+
+    let currentSoC = batteryCapacityKwh; // Start at full capacity
     const hourlyData = dayData.map(entry => {
       const date = new Date(entry.timestamp);
       const hour = date.getHours();
-      const solar = entry.ALLSKY_SFC_SW_DWN * SYSTEM_SIZE * BATTERY_CONFIG.efficiency;
+      const solar = Math.max(0, entry.ALLSKY_SFC_SW_DWN) * systemSizeKw * efficiency;
+      
       let load = 0;
       const activeAppliances: Array<{ name: string; power: number; isActive: boolean }> = [];
 
-      // Calculate load from appliances
-      const rooms = {
-        bedroom: {
-          AC: { power: 1000, pattern: (h: number) => h >= 21 || h < 2 },
-          laptop: { power: 40, pattern: (h: number) => h >= 8 && h < 16 },
-          bulbs: { power: 24, pattern: (h: number) => h >= 18 && h <= 23 },
-          iron: { power: 1000, pattern: (h: number) => h >= 13 && h < 14 },
-        },
-        kitchen: {
-          refrigerator: { power: 100, pattern: (h: number) => h >= 9 && h < 21 },
-          microwave: { power: 1000, pattern: (h: number) => h === 8 || h === 16 },
-          washingMachine: { power: 400, pattern: (h: number) => h >= 10 && h < 11.5 },
-          bulbs: { power: 18, pattern: (h: number) => h >= 19 && h <= 23 },
-        },
-        parlour: {
-          fan: { power: 45, pattern: (h: number) => h >= 11 && h < 17 },
-          TV: { power: 90, pattern: (h: number) => h >= 16 && h < 23 },
-          bulbs: { power: 18, pattern: (h: number) => h >= 18 && h < 23 },
-        },
-      };
-
-      for (const [room, appliances] of Object.entries(rooms)) {
-        for (const [name, app] of Object.entries(appliances)) {
-          const isActive = app.pattern(hour);
-          if (isActive) {
-            const variation = 0.9 + Math.random() * 0.2;
-            const appLoad = (app.power * variation) / 1000;
-            load += appLoad;
-            activeAppliances.push({ name: `${room}_${name}`, power: app.power, isActive });
-          }
+      // Calculate load from user's actual appliances
+      for (const appliance of appliancePatterns) {
+        const isActive = appliance.pattern(hour);
+        if (isActive) {
+          const variation = 0.9 + Math.random() * 0.2;
+          const appLoad = (appliance.power * variation) / 1000;
+          load += appLoad;
+          activeAppliances.push({ 
+            name: appliance.name, 
+            power: appliance.power, 
+            isActive 
+          });
         }
       }
 
       const prevSoC = currentSoC;
 
-      // Update battery state
+      // Update battery state using user's actual battery configuration
       if (solar >= load) {
         const excess = solar - load;
-        if (currentSoC < BATTERY_CONFIG.usableCapacity) {
-          const charge = Math.min(excess, BATTERY_CONFIG.usableCapacity - currentSoC);
+        if (currentSoC < batteryCapacityKwh) {
+          const charge = Math.min(excess, batteryCapacityKwh - currentSoC);
           currentSoC += charge;
         }
       } else {
         const deficit = load - solar;
-        if (currentSoC > BATTERY_CONFIG.minSoC) {
-          const discharge = Math.min(deficit, currentSoC - BATTERY_CONFIG.minSoC);
+        if (currentSoC > minSoCKwh) {
+          const discharge = Math.min(deficit, currentSoC - minSoCKwh);
           currentSoC -= discharge;
         }
       }
@@ -251,6 +398,9 @@ export default function OptimizationTips() {
 
     return {
       timestamp: dayData[0].timestamp,
+      batteryCapacityKwh,
+      minSoCKwh,
+      systemSizeKw,
       hourlyData,
     };
   };
@@ -259,7 +409,7 @@ export default function OptimizationTips() {
     const monthIndex = MONTHS.findIndex(m => m.short === month.short);
     const dayData = getDayData(monthIndex, day);
     if (!dayData) return [];
-    return OPTIMIZATION_TIPS.filter(tip => tip.condition(dayData));
+    return optimizationTips.filter(tip => tip.condition(dayData));
   };
 
   const handleMonthChange = (month: string) => {
@@ -303,6 +453,31 @@ export default function OptimizationTips() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-6xl mx-auto px-4 text-center">
+          <h2 className="text-2xl font-bold mb-4">Loading...</h2>
+          <p>Loading your system data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!systemConfig) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-6xl mx-auto px-4 text-center">
+          <h2 className="text-2xl font-bold mb-4">System Not Configured</h2>
+          <p className="mb-4">Please configure your solar system first.</p>
+          <Button onClick={() => router.push('/data/Settings/ManageSystemAppliances')}>
+            Configure System
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-yellow-50 to-white">
       {/* Page Header */}
@@ -321,6 +496,30 @@ export default function OptimizationTips() {
               Optimization Tips
             </h1>
             <div className="w-[89px]" /> {/* Spacer to center the title */}
+          </div>
+        </div>
+      </div>
+
+      {/* System Overview */}
+      <div className="w-full bg-white border-b">
+        <div className="container mx-auto py-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-3 bg-blue-50 rounded-lg">
+              <div className="text-xl font-bold text-blue-600">{systemConfig.battery_capacity}</div>
+              <div className="text-xs text-gray-600">Battery (Ah)</div>
+            </div>
+            <div className="text-center p-3 bg-green-50 rounded-lg">
+              <div className="text-xl font-bold text-green-600">{(systemConfig.panel_rating * systemConfig.number_of_panels / 1000).toFixed(1)}</div>
+              <div className="text-xs text-gray-600">Solar (kW)</div>
+            </div>
+            <div className="text-center p-3 bg-purple-50 rounded-lg">
+              <div className="text-xl font-bold text-purple-600">{systemConfig.minimum_state_of_charge}</div>
+              <div className="text-xs text-gray-600">Min SoC (%)</div>
+            </div>
+            <div className="text-center p-3 bg-orange-50 rounded-lg">
+              <div className="text-xl font-bold text-orange-600">{appliances.length}</div>
+              <div className="text-xs text-gray-600">Appliances</div>
+            </div>
           </div>
         </div>
       </div>
@@ -399,7 +598,7 @@ export default function OptimizationTips() {
                 <div className="text-sm text-gray-600">
                   {isExpanded ? (
                     <div className="space-y-2">
-                      {tips.length > 0 ? tips.map(tip => (
+                      {tips.map(tip => (
                         <div key={tip.id} className="flex items-start gap-2 p-2 bg-white rounded-lg shadow-sm">
                           {tip.icon}
                           <div>
@@ -407,14 +606,10 @@ export default function OptimizationTips() {
                             <div className="text-sm text-gray-600">{tip.description}</div>
                           </div>
                         </div>
-                      )) : (
-                        <div className="text-gray-500 italic">No optimization tips for this day.</div>
-                      )}
+                      ))}
                     </div>
                   ) : (
-                    tips.length > 0 ? 
-                      `${tips.length} optimization tip${tips.length > 1 ? 's' : ''} available` :
-                      "No optimization tips for this day"
+                    `${tips.length} optimization tip${tips.length > 1 ? 's' : ''} available`
                   )}
                 </div>
               </Card>

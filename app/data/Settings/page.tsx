@@ -20,12 +20,12 @@ export default function Settings() {
         </div>
 
         <div className="grid gap-4">
-          <Link href="/data/Settings/Configuration">
+          {/* <Link href="/data/Settings/Configuration">
             <div className="bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
               <h2 className="text-xl font-semibold mb-2">System Configuration</h2>
               <p className="text-gray-600">Configure your solar system parameters and settings.</p>
             </div>
-          </Link>
+          </Link> */}
 
           <Link href="/data/Settings/ManageSystemAppliances">
             <div className="bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">

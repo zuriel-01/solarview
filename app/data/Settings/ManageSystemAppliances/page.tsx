@@ -5,8 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, Save } from 'lucide-react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import {
   saveInitialAppliances,
   getUserInitialAppliances,
@@ -23,6 +25,10 @@ interface Appliance {
 }
 
 export default function ManageSystemAppliances() {
+  const router = useRouter();
+  const supabase = createClientComponentClient();
+  
+  const [user, setUser] = useState(null);
   const [appliances, setAppliances] = useState<Appliance[]>([]);
   const [newAppliance, setNewAppliance] = useState({
     name: '',
@@ -40,14 +46,55 @@ export default function ManageSystemAppliances() {
   });
 
   const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const rooms = ['Parlour', 'Kitchen', 'Bedroom'];
 
+  // Check authentication first
   useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Auth error:', error);
+          router.push('/auth/login');
+          return;
+        }
+
+        if (!session?.user) {
+          router.push('/auth/login');
+          return;
+        }
+
+        setUser(session.user);
+        setAuthLoading(false);
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        router.push('/auth/login');
+      }
+    };
+
+    checkAuth();
+  }, [router, supabase]);
+
+  // Load data only after auth is confirmed
+  useEffect(() => {
+    if (!user || authLoading) return;
+
     const loadData = async () => {
       try {
-        const savedSystem = await getUserSolarSystem();
-        const savedAppliances = await getUserInitialAppliances();
+        console.log('Starting to load data for user:', user.id);
+        
+        // Load system data
+        let savedSystem = null;
+        try {
+          savedSystem = await getUserSolarSystem(user, supabase);
+          console.log('System data loaded:', savedSystem);
+        } catch (systemError) {
+          console.error('Error loading system data:', systemError);
+        }
 
         if (savedSystem) {
           setSystem({
@@ -58,7 +105,6 @@ export default function ManageSystemAppliances() {
             number_of_panels: savedSystem.number_of_panels.toString()
           });
         } else {
-          // No system found, leave fields empty
           setSystem({
             battery_capacity: '',
             minimum_state_of_charge: '',
@@ -68,7 +114,17 @@ export default function ManageSystemAppliances() {
           });
         }
 
-        if (savedAppliances.length > 0) {
+        // Load appliances data
+        let savedAppliances = [];
+        try {
+          savedAppliances = await getUserInitialAppliances(user, supabase);
+          console.log('Appliances data loaded:', savedAppliances);
+        } catch (applianceError) {
+          console.error('Error loading appliances data:', applianceError);
+          savedAppliances = [];
+        }
+
+        if (savedAppliances && savedAppliances.length > 0) {
           const formatted = savedAppliances.map((item) => ({
             id: item.id,
             name: item.appliance_name,
@@ -80,19 +136,25 @@ export default function ManageSystemAppliances() {
         } else {
           setAppliances([]);
         }
-      } catch (err) {
-        console.error('Error loading data:', err);
-        // Only show alert if it's a real error, not just empty data
-        if (err && err.message && err.message !== '{}') {
-          alert('Failed to load system data.');
-        }
+
+      } catch (err: any) {
+        console.error('Unexpected error in loadData:', err);
+        // Set default values even if there's an error
+        setSystem({
+          battery_capacity: '',
+          minimum_state_of_charge: '',
+          installation_year: '',
+          panel_rating: '',
+          number_of_panels: ''
+        });
+        setAppliances([]);
       } finally {
         setLoading(false);
       }
     };
 
     loadData();
-  }, []);
+  }, [user, authLoading, supabase]);
 
   const addAppliance = () => {
     if (!newAppliance.name || !newAppliance.wattage || !newAppliance.usageHours || !newAppliance.room) {
@@ -121,31 +183,82 @@ export default function ManageSystemAppliances() {
   };
 
   const saveConfiguration = async () => {
+    if (!user) {
+      alert('Please log in to save configuration');
+      return;
+    }
+
+    // Validate system fields
+    if (!system.battery_capacity || !system.minimum_state_of_charge || 
+        !system.installation_year || !system.panel_rating || !system.number_of_panels) {
+      alert('Please fill in all system information fields');
+      return;
+    }
+
+    // Validate numeric values
+    const batteryCapacity = parseInt(system.battery_capacity);
+    const minSoc = parseInt(system.minimum_state_of_charge);
+    const panelRating = parseInt(system.panel_rating);
+    const numPanels = parseInt(system.number_of_panels);
+
+    if (batteryCapacity <= 0) {
+      alert('Battery capacity must be a positive number');
+      return;
+    }
+    if (minSoc < 0 || minSoc > 100) {
+      alert('Minimum state of charge must be between 0 and 100');
+      return;
+    }
+    if (panelRating <= 0) {
+      alert('Panel rating must be a positive number');
+      return;
+    }
+    if (numPanels <= 0) {
+      alert('Number of panels must be a positive number');
+      return;
+    }
+
+    setSaving(true);
+
     try {
+      console.log('Starting save configuration...');
+      console.log('Current user:', user);
+      console.log('System data:', system);
+
       // Save solar system
+      console.log('Saving solar system...');
       await saveSolarSystem({
-        battery_capacity: parseInt(system.battery_capacity),
-        minimum_state_of_charge: parseInt(system.minimum_state_of_charge),
+        battery_capacity: batteryCapacity,
+        minimum_state_of_charge: minSoc,
         installation_year: parseInt(system.installation_year),
-        panel_rating: parseInt(system.panel_rating),
-        number_of_panels: parseInt(system.number_of_panels)
-      });
+        panel_rating: panelRating,
+        number_of_panels: numPanels
+      }, user, supabase);
 
-      // Save appliances
-      const formattedAppliances = appliances.map((a) => ({
-        appliance_name: a.name,
-        wattage: a.wattage,
-        usage_hours: a.usageHours,
-        room: a.room.toLowerCase()
-      }));
+      console.log('Solar system saved successfully');
 
-      await saveInitialAppliances(formattedAppliances);
+      // Save appliances if any
+      if (appliances.length > 0) {
+        console.log('Saving appliances...');
+        const formattedAppliances = appliances.map((a) => ({
+          appliance_name: a.name,
+          wattage: a.wattage,
+          usage_hours: a.usageHours,
+          room: a.room.toLowerCase()
+        }));
+
+        await saveInitialAppliances(formattedAppliances, user, supabase);
+        console.log('Appliances saved successfully');
+      }
 
       alert('Configuration saved successfully!');
-      window.location.href = '/home';
-    } catch (err) {
-      console.error('Save error:', err);
-      alert('Failed to save configuration.');
+      router.push('/home');
+    } catch (err: any) {
+      console.error('Save error details:', err);
+      const errorMessage = err?.message || 'Failed to save configuration';
+      alert(`Save failed: ${errorMessage}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -155,10 +268,18 @@ export default function ManageSystemAppliances() {
   const getTotalDailyUsage = () =>
     appliances.reduce((total, a) => total + a.wattage * a.usageHours, 0);
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-6xl mx-auto px-4 text-center">Checking authentication...</div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 py-8">
-        <div className="max-w-6xl mx-auto px-4 text-center">Loading...</div>
+        <div className="max-w-6xl mx-auto px-4 text-center">Loading system data...</div>
       </div>
     );
   }
@@ -186,6 +307,7 @@ export default function ManageSystemAppliances() {
                 type="number"
                 value={system.battery_capacity}
                 onChange={(e) => handleSystemChange('battery_capacity', e.target.value)}
+                disabled={saving}
               />
             </div>
             <div>
@@ -194,6 +316,7 @@ export default function ManageSystemAppliances() {
                 type="number"
                 value={system.minimum_state_of_charge}
                 onChange={(e) => handleSystemChange('minimum_state_of_charge', e.target.value)}
+                disabled={saving}
               />
             </div>
             <div>
@@ -202,6 +325,7 @@ export default function ManageSystemAppliances() {
                 type="number"
                 value={system.installation_year}
                 onChange={(e) => handleSystemChange('installation_year', e.target.value)}
+                disabled={saving}
               />
             </div>
             <div>
@@ -210,6 +334,7 @@ export default function ManageSystemAppliances() {
                 type="number"
                 value={system.panel_rating}
                 onChange={(e) => handleSystemChange('panel_rating', e.target.value)}
+                disabled={saving}
               />
             </div>
             <div>
@@ -218,18 +343,14 @@ export default function ManageSystemAppliances() {
                 type="number"
                 value={system.number_of_panels}
                 onChange={(e) => handleSystemChange('number_of_panels', e.target.value)}
+                disabled={saving}
               />
             </div>
           </CardContent>
         </Card>
 
-        {/* Appliance Form + Summary + List (Your UI stays same from here) */}
-        {/* ...reuse the rest of your UI exactly as you had it */}
-        {/* Add Appliance Form, Summary Card, Appliance List, Save Button — all already perfect in your file */}
-        {/* Just call saveConfiguration on Save click */}
-
         {/* Add New Appliance Form */}
-        <Card>
+        <Card className="mb-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Plus className="w-5 h-5" />
@@ -243,6 +364,7 @@ export default function ManageSystemAppliances() {
                 <Input
                   value={newAppliance.name}
                   onChange={(e) => setNewAppliance({ ...newAppliance, name: e.target.value })}
+                  disabled={saving}
                 />
               </div>
               <div>
@@ -251,6 +373,7 @@ export default function ManageSystemAppliances() {
                   type="number"
                   value={newAppliance.wattage}
                   onChange={(e) => setNewAppliance({ ...newAppliance, wattage: e.target.value })}
+                  disabled={saving}
                 />
               </div>
               <div>
@@ -260,14 +383,16 @@ export default function ManageSystemAppliances() {
                   step="0.5"
                   value={newAppliance.usageHours}
                   onChange={(e) => setNewAppliance({ ...newAppliance, usageHours: e.target.value })}
+                  disabled={saving}
                 />
               </div>
               <div>
                 <Label>Room</Label>
                 <select
-                  className="w-full border px-3 py-2 rounded"
+                  className="w-full border px-3 py-2 rounded disabled:opacity-50"
                   value={newAppliance.room}
                   onChange={(e) => setNewAppliance({ ...newAppliance, room: e.target.value })}
+                  disabled={saving}
                 >
                   <option value="">Select Room</option>
                   {rooms.map((room) => (
@@ -277,7 +402,7 @@ export default function ManageSystemAppliances() {
               </div>
             </div>
             <div className="mt-4">
-              <Button onClick={addAppliance} className="w-full md:w-auto">
+              <Button onClick={addAppliance} className="w-full md:w-auto" disabled={saving}>
                 <Plus className="w-4 h-4 mr-2" />
                 Add Appliance
               </Button>
@@ -285,8 +410,8 @@ export default function ManageSystemAppliances() {
           </CardContent>
         </Card>
 
-        {/* Summary Card and Appliance List */}
-        <Card className="mt-6">
+        {/* Summary Card */}
+        <Card className="mb-6">
           <CardHeader>
             <CardTitle>System Summary</CardTitle>
           </CardHeader>
@@ -306,7 +431,8 @@ export default function ManageSystemAppliances() {
           </CardContent>
         </Card>
 
-        <Card className="mt-6">
+        {/* Configured Appliances */}
+        <Card className="mb-6">
           <CardHeader>
             <CardTitle>Configured Appliances</CardTitle>
           </CardHeader>
@@ -335,6 +461,7 @@ export default function ManageSystemAppliances() {
                               size="sm"
                               onClick={() => removeAppliance(appliance.id)}
                               className="text-red-600 hover:text-red-700"
+                              disabled={saving}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -349,14 +476,17 @@ export default function ManageSystemAppliances() {
           </CardContent>
         </Card>
 
-        {appliances.length > 0 && (
-          <div className="flex justify-end mt-6">
-            <Button onClick={saveConfiguration} className="bg-green-600 hover:bg-green-700">
-              <Save className="w-4 h-4 mr-2" />
-              Save Configuration
-            </Button>
-          </div>
-        )}
+        {/* Save Button */}
+        <div className="flex justify-end mt-6">
+          <Button 
+            onClick={saveConfiguration} 
+            className="bg-green-600 hover:bg-green-700"
+            disabled={saving}
+          >
+            <Save className="w-4 h-4 mr-2" />
+            {saving ? 'Saving...' : 'Save Configuration'}
+          </Button>
+        </div>
       </div>
     </div>
   );
