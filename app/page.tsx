@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 // import { getUserSolarSystem } from "@/lib/db";
 // import { saveSolarSystem } from "@/lib/db";
+import { supabase }from "@/supabase";
 export default function LandingPage() {
   const { user, loading } = useSession();
   const router = useRouter();
@@ -54,13 +55,13 @@ export default function LandingPage() {
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">SolarView</h1>
-          <p className="text-lg text-gray-600">Monitor Your Solar Energy in Real-Time</p>
+          
         </div>
 
         <Card className="shadow-lg">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl">Welcome to SolarView</CardTitle>
-            <p className="text-gray-600">Get started with your solar monitoring journey</p>
+           
           </CardHeader>
           <CardContent className="space-y-4">
             <Link href="/auth/signup" className="block">
@@ -87,7 +88,7 @@ export default function LandingPage() {
         </Card>
 
         <div className="text-center mt-8 text-sm text-gray-500">
-          <p>Start monitoring your solar energy production and consumption</p>
+      
         </div>
       </div>
     </div>

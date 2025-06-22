@@ -4,9 +4,9 @@ export function HeroSection() {
   return (
     <section className="mt-28 flex flex-col">
       <h2 className="text-7xl text-white text-center max-md:text-[55px] max-md:mt-24 ">
-      Optimize solar power <br/> for peak efficiency.
+      Manage solar power <br /> for optimal use
       <p className="text-neutral-500 text-3xl pt-6">
-        Monitor your system&apos;s performance and get daily insights
+        View daily insights into your system&apos;s performance <br /> and make informed decisions.
       </p>
       </h2> 
     

@@ -290,7 +290,7 @@ export default function EnergyGenerated() {
       <div className="max-w-6xl mx-auto px-4">
         
         <div className="flex items-center justify-between mb-6">
-          <Link href="/">
+          <Link href="/home">
             <Button variant="outline">Back</Button>
           </Link>
           <h2 className="text-2xl font-bold">Energy Generated - {getDateLabel()}</h2>

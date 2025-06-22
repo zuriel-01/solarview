@@ -27,7 +27,7 @@ export default async function Solardata() {
       <div className="h-16 bg-gray-50">
         <div className="mx-auto max-w-7xl px-10 sm:px-6">
           <div className="flex justify-between py-6">
-            <Link href="/">
+            <Link href="/home">
               <StepBackIcon size={45} className="text-black p-2" />
             </Link>
             <h1 className="text-2xl font-bold text-gray-900">Solar Panel Data</h1>

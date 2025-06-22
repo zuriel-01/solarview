@@ -580,39 +580,6 @@ export default function BatteryStatusPage() {
       });
     }
 
-<<<<<<< HEAD
-    // Debug output with enhanced information
-    //console.log('Battery Analysis:', {
-    //   date: `${selectedMonth + 1}/${selectedDay}/2024`,
-    //   systemSizeKw: systemSizeKw.toFixed(2),
-    //   batteryCapacityKwh: batteryCapacityKwh.toFixed(2),
-    //   minSoCKwh: minSoCKwh.toFixed(2),
-    //   totalDailyLoadKWh: totalDailyLoad.toFixed(2),
-    //   peakLoadKW: peakLoad.toFixed(2),
-    //   peakHour,
-    //   batteryStartPercent: ((startSOC / batteryCapacityKwh) * 100).toFixed(2),
-    //   batteryEndPercent: ((soc / batteryCapacityKwh) * 100).toFixed(2),
-    //   totalCharged: chargeTotal.toFixed(2),
-    //   totalDischarged: dischargeTotal.toFixed(2),
-    //   dataPointsProcessed: filtered.length,
-    //   avgDailyIrradiance: (filtered.reduce((sum, entry) => sum + entry["corrected_irradiance_kWh/m2"], 0) / filtered.length).toFixed(3)
-    // });
-
-    //console.log('Appliance Daily Usage (kWh):', 
-    //   Object.entries(applianceUsage)
-    //     .sort(([,a], [,b]) => b - a)
-    //     .map(([app, usage]) => `${app}: ${usage.toFixed(2)} kWh`)
-    // );
-
-    // Check if we have realistic load patterns
-    if (totalDailyLoad < 1) {
-      console.warn('⚠️ Very low daily load detected. Check appliance configurations.');
-    }
-    
-    if (peakLoad < 0.5) {
-      console.warn('⚠️ Very low peak load. This might cause unrealistic battery behavior.');
-    }
-=======
     // Debug output
     console.log('Battery Analysis:', {
       date: `${selectedMonth + 1}/${selectedDay}/2025`,
@@ -632,7 +599,6 @@ export default function BatteryStatusPage() {
         .sort(([,a], [,b]) => b - a)
         .map(([app, usage]) => `${app}: ${usage.toFixed(2)} kWh`)
     );
->>>>>>> f59abde29fbb53c8f35f673ba6f327835bc845eb
 
   }, [selectedMonth, selectedDay, view, systemConfig, appliances]);
 
@@ -672,7 +638,7 @@ export default function BatteryStatusPage() {
       <div className="max-w-6xl mx-auto px-4">
         
         <div className="flex items-center justify-between mb-6">
-          <Link href="/">
+          <Link href="/home">
             <Button variant="outline">Back</Button>
           </Link>
           <h2 className="text-2xl font-bold">Battery Status - {getDateLabel()}</h2>
