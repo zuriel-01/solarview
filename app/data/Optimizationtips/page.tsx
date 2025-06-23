@@ -59,7 +59,7 @@ interface Tip {
   condition: (data: DayData) => boolean;
 }
 
-// Function to get appliance usage pattern based on type and room
+// Updated function to match the room-specific components exactly
 const getAppliancePattern = (applianceName: string, room: string, usageHours: number) => {
   const name = applianceName.toLowerCase();
   const roomLower = room.toLowerCase();
@@ -68,19 +68,45 @@ const getAppliancePattern = (applianceName: string, room: string, usageHours: nu
     if (name.includes('fan')) return (h: number) => h >= 11 && h < 17;
     if (name.includes('tv') || name.includes('television')) return (h: number) => h >= 16 && h < 23;
     if (name.includes('light') || name.includes('bulb')) return (h: number) => h >= 18 && h < 23;
+    if (name.includes('ac') || name.includes('air condition')) return (h: number) => h >= 17 && h < (17 + Math.min(usageHours, 10)) % 24;
+    if (name.includes('radio') || name.includes('music')) return (h: number) => h >= 7 && h < (7 + usageHours) % 24;
+    if (name.includes('decoder') || name.includes('cable')) return (h: number) => h >= 16 && h < 23;
+    if (name.includes('lamp')) return (h: number) => h >= 18 && h < 23;
+    // Default pattern for parlour
+    return (h: number) => h >= 15 && h < (15 + usageHours) % 24;
   } else if (roomLower === 'kitchen') {
-    if (name.includes('fridge') || name.includes('refrigerator')) return (h: number) => h >= 9 && h < 21;
-    if (name.includes('microwave')) return (h: number) => h === 8 || h === 16;
-    if (name.includes('washing') || name.includes('washer')) return (h: number) => h >= 10 && h < 11.5;
-    if (name.includes('light') || name.includes('bulb')) return (h: number) => h >= 19 && h <= 23;
+    if (name.includes('fridge') || name.includes('refrigerator') || name.includes('freezer')) {
+      // Fridge: constant usage (distributed throughout day)
+      const hoursToUse = Math.min(24, Math.ceil(usageHours));
+      return (h: number) => h % Math.ceil(24 / hoursToUse) === 0;
+    }
+    if (name.includes('microwave')) return (h: number) => (h >= 7 && h < 8) || (h >= 12 && h < 13) || (h >= 18 && h < 19);
+    if (name.includes('blender') || name.includes('mixer')) return (h: number) => (h >= 7 && h < 8) || (h >= 17 && h < 18);
+    if (name.includes('kettle') || name.includes('water heater')) return (h: number) => (h >= 6 && h < 7) || (h >= 15 && h < 16) || (h >= 20 && h < 21);
+    if (name.includes('rice cooker') || name.includes('cooker')) return (h: number) => (h >= 11 && h < 12) || (h >= 17 && h < 18);
+    if (name.includes('dishwasher')) return (h: number) => (h >= 13 && h < 14) || (h >= 20 && h < 21);
+    if (name.includes('toaster')) return (h: number) => h >= 7 && h < 8;
+    if (name.includes('oven')) return (h: number) => h >= 17 && h < 19;
+    if (name.includes('coffee') || name.includes('espresso')) return (h: number) => (h >= 6 && h < 7) || (h >= 14 && h < 15);
+    if (name.includes('fan')) return (h: number) => (h >= 11 && h < 13) || (h >= 17 && h < 19);
+    if (name.includes('light') || name.includes('bulb')) return (h: number) => h >= 6 && h < (6 + usageHours) % 24;
+    // Default kitchen pattern: meal preparation times
+    return (h: number) => (h >= 7 && h < 9) || (h >= 11 && h < 13) || (h >= 17 && h < 19);
   } else if (roomLower === 'bedroom') {
-    if (name.includes('ac') || name.includes('air condition')) return (h: number) => h >= 21 || h < 2;
-    if (name.includes('light') || name.includes('bulb')) return (h: number) => h >= 18 && h <= 23;
-    if (name.includes('laptop') || name.includes('computer')) return (h: number) => h >= 8 && h < 16;
-    if (name.includes('iron') || name.includes('pressing')) return (h: number) => h >= 13 && h < 14;
+    if (name.includes('ac') || name.includes('air condition')) return (h: number) => h >= 18 && h < (18 + usageHours) % 24;
+    if (name.includes('bulb') || name.includes('light')) return (h: number) => h >= 18 && h < (18 + usageHours) % 24;
+    if (name.includes('laptop') || name.includes('computer')) return (h: number) => h >= 8 && h < (8 + usageHours) % 24;
+    if (name.includes('iron') || name.includes('pressing')) return (h: number) => h >= 13 && h < (13 + usageHours) % 24;
+    if (name.includes('fan')) return (h: number) => h >= 19 && h < (19 + usageHours) % 24;
+    if (name.includes('fridge') || name.includes('refrigerator')) {
+      const hoursToUse = Math.ceil(usageHours);
+      return (h: number) => h % (24 / hoursToUse) === 0;
+    }
+    // Default bedroom pattern
+    return (h: number) => h >= 6 && h < (6 + usageHours) % 24;
   }
   
-  // Default pattern based on usage hours
+  // Default pattern for other rooms
   return (h: number) => h >= 6 && h < (6 + usageHours) % 24;
 };
 
@@ -331,10 +357,10 @@ export default function OptimizationTips() {
 
     // Calculate system parameters from user's actual configuration
     const batteryCapacityKwh = (systemConfig.battery_capacity * 12) / 1000; // Convert Ah to kWh (assuming 12V)
-    const minSoCPercent = systemConfig.minimum_state_of_charge;
+    const minSoCPercent = 20; // Fixed at 20% as per document
     const minSoCKwh = (batteryCapacityKwh * minSoCPercent) / 100;
     const systemSizeKw = (systemConfig.panel_rating * systemConfig.number_of_panels) / 1000;
-    const efficiency = 0.75;
+    const efficiency = 0.65; // Base efficiency as per document
 
     // Create appliance patterns from user's actual appliances
     const appliancePatterns = appliances.map(appliance => ({
@@ -352,12 +378,11 @@ export default function OptimizationTips() {
       let load = 0;
       const activeAppliances: Array<{ name: string; power: number; isActive: boolean }> = [];
 
-      // Calculate load from user's actual appliances
+      // Calculate load from user's actual appliances using consistent patterns
       for (const appliance of appliancePatterns) {
         const isActive = appliance.pattern(hour);
         if (isActive) {
-          const variation = 0.9 + Math.random() * 0.2;
-          const appLoad = (appliance.power * variation) / 1000;
+          const appLoad = appliance.power / 1000; // Convert to kW - no random variation
           load += appLoad;
           activeAppliances.push({ 
             name: appliance.name, 

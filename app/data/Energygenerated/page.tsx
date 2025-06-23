@@ -37,6 +37,11 @@ interface SystemConfig {
   number_of_panels: number;
 }
 
+type SolarEntry = {
+  timestamp: string;
+  "corrected_irradiance_kWh/m2": number;
+};
+
 export default function EnergyGenerated() {
   const [selectedMonth, setSelectedMonth] = useState<number>(0);
   const [selectedDay, setSelectedDay] = useState<number>(1);
@@ -120,15 +125,13 @@ export default function EnergyGenerated() {
       return 0;
     }
     
-    // Use actual system configuration
-    const panelWattageKw = systemConfig.panel_rating / 1000; // Convert W to kW
-    const panelCount = systemConfig.number_of_panels;
-    const systemPowerKw = panelWattageKw * panelCount;
-    const performanceFactor = 0.75; // Real-world efficiency factor
+    // Use document specifications: Energy (kWh) = Irradiance (kWh/m²/hr) x System Size x Efficiency
+    const systemSizeKw = (systemConfig.panel_rating * systemConfig.number_of_panels) / 1000; // Convert W to kW
+    const efficiency = 0.65; // Base efficiency as per document
     
-    const production = Math.max(0, irradiance * systemPowerKw * performanceFactor);
+    const production = Math.max(0, irradiance * systemSizeKw * efficiency);
     
-    console.log(`Production calculation: ${irradiance} * ${systemPowerKw} * ${performanceFactor} = ${production}`);
+    console.log(`Production calculation: ${irradiance} * ${systemSizeKw} * ${efficiency} = ${production}`);
     
     return production;
   };
@@ -136,11 +139,11 @@ export default function EnergyGenerated() {
   useEffect(() => {
     if (!systemConfig) return;
 
-    const data = solarData as { timestamp: string; ALLSKY_SFC_SW_DWN: number }[];
+    const data = solarData as SolarEntry[];
 
     // Find maximum solar generation for the entire year with user's system
     const maxGeneration = data.reduce((max, entry) => {
-      const production = calculateEnergyProduction(entry.ALLSKY_SFC_SW_DWN);
+      const production = calculateEnergyProduction(entry["corrected_irradiance_kWh/m2"]);
       return Math.max(max, production);
     }, 0);
 
@@ -161,7 +164,7 @@ export default function EnergyGenerated() {
       const hourlyEnergy = filtered.map((entry) => {
         const date = new Date(entry.timestamp);
         const hour = date.getHours();
-        const production = calculateEnergyProduction(entry.ALLSKY_SFC_SW_DWN);
+        const production = calculateEnergyProduction(entry["corrected_irradiance_kWh/m2"]);
         
         return {
           time: `${hour.toString().padStart(2, '0')}:00`,
@@ -174,7 +177,7 @@ export default function EnergyGenerated() {
         label: 'Energy Generated (kWh)',
         data: hourlyEnergy.map(d => d.energyGenerated),
         borderColor: '#22c55e',
-        backgroundColor: '#22c55e33',
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
         tension: 0.4,
         fill: true,
       }]);
@@ -186,37 +189,34 @@ export default function EnergyGenerated() {
     } else if (view === 'monthly') {
       // --- MONTHLY: per day ---
       const dailyTotals: { [key: string]: number } = {};
-      const dailyCounts: { [key: string]: number } = {};
       let monthlyTotal = 0;
       
       const daysInMonth = new Date(2024, selectedMonth + 1, 0).getDate();
       
+      // Initialize all days
       for (let day = 1; day <= daysInMonth; day++) {
         dailyTotals[day.toString()] = 0;
-        dailyCounts[day.toString()] = 0;
       }
       
+      // Sum up hourly production for each day
       filtered.forEach((entry) => {
         const date = new Date(entry.timestamp);
         const dayOfMonth = date.getDate();
-        const production = calculateEnergyProduction(entry.ALLSKY_SFC_SW_DWN);
+        const production = calculateEnergyProduction(entry["corrected_irradiance_kWh/m2"]);
         
         dailyTotals[dayOfMonth.toString()] += production;
-        dailyCounts[dayOfMonth.toString()]++;
         monthlyTotal += production;
       });
 
       const labels = Object.keys(dailyTotals).sort((a, b) => parseInt(a) - parseInt(b));
-      const dailyAverages = labels.map(label => 
-        dailyCounts[label] ? dailyTotals[label] / dailyCounts[label] : 0
-      );
+      const dailyTotalsArray = labels.map(label => dailyTotals[label] || 0);
 
       setLabels(labels);
       setDatasets([{
         label: 'Daily Energy Generated (kWh)',
-        data: dailyAverages,
+        data: dailyTotalsArray,
         borderColor: '#22c55e',
-        backgroundColor: '#22c55e33',
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
         tension: 0.4,
         fill: true,
       }]);
@@ -225,29 +225,23 @@ export default function EnergyGenerated() {
     } else {
       // --- YEARLY: per month ---
       const monthlyTotals = Array(12).fill(0);
-      const monthlyCounts = Array(12).fill(0);
       let yearlyTotal = 0;
 
       filtered.forEach((entry) => {
         const date = new Date(entry.timestamp);
         const month = date.getMonth();
-        const production = calculateEnergyProduction(entry.ALLSKY_SFC_SW_DWN);
+        const production = calculateEnergyProduction(entry["corrected_irradiance_kWh/m2"]);
         
         monthlyTotals[month] += production;
-        monthlyCounts[month]++;
         yearlyTotal += production;
       });
-
-      const monthlyAverages = monthlyTotals.map((total, i) => 
-        monthlyCounts[i] ? total / monthlyCounts[i] : 0
-      );
 
       setLabels(monthAbbr);
       setDatasets([{
         label: 'Monthly Energy Generated (kWh)',
-        data: monthlyAverages,
+        data: monthlyTotals,
         borderColor: '#22c55e',
-        backgroundColor: '#22c55e33',
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
         tension: 0.4,
         fill: true,
       }]);
@@ -280,9 +274,9 @@ export default function EnergyGenerated() {
     );
   }
 
-  // Calculate maximum chart value based on user's system
+  // Calculate maximum chart value based on user's system and efficiency
   const maxChartValue = Math.ceil(
-    (systemConfig.panel_rating * systemConfig.number_of_panels * 0.75) / 1000
+    (systemConfig.panel_rating * systemConfig.number_of_panels * 0.65) / 1000
   );
 
   return (
@@ -290,7 +284,7 @@ export default function EnergyGenerated() {
       <div className="max-w-6xl mx-auto px-4">
         
         <div className="flex items-center justify-between mb-6">
-          <Link href="/home">
+          <Link href="/">
             <Button variant="outline">Back</Button>
           </Link>
           <h2 className="text-2xl font-bold">Energy Generated - {getDateLabel()}</h2>
@@ -306,20 +300,24 @@ export default function EnergyGenerated() {
           <CardHeader>
             <CardTitle>Your Solar System</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="text-center">
+          <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="text-center p-3 bg-blue-50 rounded-lg">
               <div className="text-2xl font-bold text-blue-600">{systemConfig.number_of_panels}</div>
               <div className="text-sm text-gray-600">Solar Panels</div>
             </div>
-            <div className="text-center">
+            <div className="text-center p-3 bg-green-50 rounded-lg">
               <div className="text-2xl font-bold text-green-600">{systemConfig.panel_rating}W</div>
               <div className="text-sm text-gray-600">Per Panel</div>
             </div>
-            <div className="text-center">
+            <div className="text-center p-3 bg-purple-50 rounded-lg">
               <div className="text-2xl font-bold text-purple-600">{(systemConfig.panel_rating * systemConfig.number_of_panels / 1000).toFixed(1)}kW</div>
               <div className="text-sm text-gray-600">Total Capacity</div>
             </div>
-            <div className="text-center">
+            <div className="text-center p-3 bg-yellow-50 rounded-lg">
+              <div className="text-2xl font-bold text-yellow-600">65%</div>
+              <div className="text-sm text-gray-600">Efficiency</div>
+            </div>
+            <div className="text-center p-3 bg-orange-50 rounded-lg">
               <div className="text-2xl font-bold text-orange-600">{systemConfig.battery_capacity}</div>
               <div className="text-sm text-gray-600">Battery (Ah)</div>
             </div>
@@ -375,7 +373,11 @@ export default function EnergyGenerated() {
                   legend: { position: 'top' },
                   tooltip: {
                     callbacks: {
-                      label: (context) => `${context.label}: ${context.formattedValue} kWh`
+                      label: (context) => {
+                        const label = context.dataset.label || '';
+                        const value = context.parsed.y;
+                        return `${label}: ${value.toFixed(3)} kWh`;
+                      }
                     }
                   }
                 },
@@ -397,7 +399,7 @@ export default function EnergyGenerated() {
             <CardTitle>Energy Generation Summary</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="text-center p-4 bg-green-50 rounded-lg">
                 <div className="text-2xl font-bold text-green-600">
                   {isNaN(solarEnergyGenerated) ? '0.00' : solarEnergyGenerated.toFixed(2)}
@@ -428,6 +430,27 @@ export default function EnergyGenerated() {
                   })()}
                 </div>
                 <div className="text-sm text-gray-600">Average per {view === 'daily' ? 'Hour' : 'Day'} (kWh)</div>
+              </div>
+              <div className="text-center p-4 bg-amber-50 rounded-lg">
+                <div className="text-2xl font-bold text-amber-600">
+                  {(() => {
+                    const maxPossible = maxChartValue;
+                    const efficiency = solarEnergyGenerated / (maxPossible * (view === 'daily' ? 24 : view === 'monthly' ? new Date(2024, selectedMonth + 1, 0).getDate() : 365)) * 100;
+                    return isNaN(efficiency) ? '0.0' : efficiency.toFixed(1);
+                  })()}%
+                </div>
+                <div className="text-sm text-gray-600">System Efficiency</div>
+              </div>
+            </div>
+            
+            {/* Additional System Information */}
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+              <h3 className="text-lg font-semibold mb-2">System Performance</h3>
+              <div className="text-sm text-gray-600 space-y-1">
+                <p>• Using AI-predicted solar irradiance data for accurate energy calculations</p>
+                <p>• Solar panels operating at 65% real-world efficiency (including shading, temperature effects)</p>
+                <p>• Energy calculation: Irradiance × System Size × Efficiency</p>
+                <p>• Peak theoretical output: {maxChartValue.toFixed(1)} kWh under optimal conditions</p>
               </div>
             </div>
           </CardContent>

@@ -25,6 +25,7 @@ import {
   getUserSolarSystem,
   getUserInitialAppliances,
 } from '@/lib/db';
+import solarData from '@/app/data/solarData.json';
 
 ChartJS.register(
   CategoryScale,
@@ -58,6 +59,7 @@ interface ProjectionInput {
     currentSoC: number;
     startTime: number;
     duration: number;
+    selectedDate: string;
 }
 
 interface ProjectionResult {
@@ -71,19 +73,57 @@ interface ProjectionResult {
     lowBatteryWarning: boolean;
 }
 
-// Solar irradiance simulation (simplified)
-const getSolarIrradiance = (hour: number) => {
-  if (hour < 6 || hour > 18) return 0; // No sun
+type SolarEntry = {
+  timestamp: string;
+  "corrected_irradiance_kWh/m2": number;
+};
+
+// Function to get appliance usage pattern based on type and room
+const getAppliancePattern = (applianceName: string, room: string, usageHours: number) => {
+  const name = applianceName.toLowerCase();
+  const roomLower = room.toLowerCase();
   
-  // Simulate sun curve (peak at noon)
-  const noonOffset = Math.abs(hour - 12);
-  const maxIrradiance = 0.8; // kW/m² peak
-  
-  if (noonOffset <= 2) {
-    return maxIrradiance * (1 - noonOffset * 0.15); // Peak hours
-  } else {
-    return maxIrradiance * Math.max(0, 1 - (noonOffset - 2) * 0.25); // Declining
+  if (roomLower === 'parlour') {
+    if (name.includes('fan')) return (h: number) => h >= 11 && h < 17;
+    if (name.includes('tv') || name.includes('television')) return (h: number) => h >= 16 && h < 23;
+    if (name.includes('light') || name.includes('bulb')) return (h: number) => h >= 18 && h < 23;
+  } else if (roomLower === 'kitchen') {
+    if (name.includes('fridge') || name.includes('refrigerator')) return (h: number) => h >= 9 && h < 21;
+    if (name.includes('microwave')) return (h: number) => h === 8 || h === 16;
+    if (name.includes('washing') || name.includes('washer')) return (h: number) => h >= 10 && h < 11.5;
+    if (name.includes('light') || name.includes('bulb')) return (h: number) => h >= 19 && h <= 23;
+  } else if (roomLower === 'bedroom') {
+    if (name.includes('ac') || name.includes('air condition')) return (h: number) => h >= 21 || h < 2;
+    if (name.includes('light') || name.includes('bulb')) return (h: number) => h >= 18 && h <= 23;
+    if (name.includes('laptop') || name.includes('computer')) return (h: number) => h >= 8 && h < 16;
+    if (name.includes('iron') || name.includes('pressing')) return (h: number) => h >= 13 && h < 14;
   }
+  
+  // Default pattern based on usage hours
+  return (h: number) => h >= 6 && h < (6 + usageHours) % 24;
+};
+
+// Get real solar irradiance from your AI-predicted data
+const getRealSolarIrradiance = (date: string, hour: number): number => {
+  const data = solarData as SolarEntry[];
+  
+  // Create timestamp for the specific hour
+  const targetTimestamp = `${date} ${hour.toString().padStart(2, '0')}:00:00`;
+  
+  // Find matching entry
+  const entry = data.find(entry => entry.timestamp === targetTimestamp);
+  
+  if (entry) {
+    return Math.max(0, entry["corrected_irradiance_kWh/m2"]);
+  }
+  
+  // Fallback: find closest date and hour
+  const fallbackEntry = data.find(entry => {
+    const entryDate = new Date(entry.timestamp);
+    return entryDate.getHours() === hour;
+  });
+  
+  return fallbackEntry ? Math.max(0, fallbackEntry["corrected_irradiance_kWh/m2"]) : 0;
 };
 
 export default function BatteryProjectionPage() {
@@ -93,6 +133,7 @@ export default function BatteryProjectionPage() {
         currentSoC: 80,
         startTime: new Date().getHours(),
         duration: 6,
+        selectedDate: new Date().toISOString().split('T')[0],
     });
     const [results, setResults] = useState<ProjectionResult | null>(null);
     const [loading, setLoading] = useState(true);
@@ -148,7 +189,7 @@ export default function BatteryProjectionPage() {
         loadInitialData();
     }, [router, supabase]);
 
-    const handleInputChange = (field: keyof ProjectionInput, value: number) => {
+    const handleInputChange = (field: keyof ProjectionInput, value: number | string) => {
         setInputs(prev => ({ ...prev, [field]: value }));
     };
 
@@ -162,23 +203,29 @@ export default function BatteryProjectionPage() {
         if (!system) return;
 
         const selectedAppliances = appliances.filter(a => a.selected);
-        const totalLoad = selectedAppliances.reduce((sum, a) => sum + (a.wattage / 1000), 0); // Convert to kW
         
-        // Battery specs
-        const batteryCapacityKwh = (system.battery_capacity * 12) / 1000; // Assuming 12V system, convert to kWh
-        const minSoC = system.minimum_state_of_charge;
-        const usableCapacity = batteryCapacityKwh * ((100 - minSoC) / 100);
+        // Battery specs (following document specifications)
+        const batteryCapacityKwh = (system.battery_capacity * 12) / 1000; // Convert Ah to kWh
+        const minSoC = 20; // Fixed at 20% as per document
+        const minSoCKwh = (batteryCapacityKwh * minSoC) / 100;
         
-        // Solar generation specs
-        const solarCapacityKw = (system.panel_rating * system.number_of_panels) / 1000;
-        const solarEfficiency = 0.75; // Real-world efficiency
+        // Solar generation specs (following document specifications)
+        const systemSizeKw = (system.panel_rating * system.number_of_panels) / 1000;
+        const efficiency = 0.65; // Base efficiency as per document
+        
+        // Create appliance patterns for existing appliances
+        const existingAppliancePatterns = appliances.filter(a => !a.selected).map(appliance => ({
+            power: appliance.wattage,
+            pattern: getAppliancePattern(appliance.name, appliance.room, appliance.usageHours),
+            name: appliance.name
+        }));
         
         const labels: string[] = [];
         const socData: number[] = [];
         const solarData: number[] = [];
         const loadData: number[] = [];
         
-        let currentSoC = inputs.currentSoC;
+        let currentSoC = (inputs.currentSoC / 100) * batteryCapacityKwh; // Convert % to kWh
         let totalSolarGenerated = 0;
         let totalLoadConsumed = 0;
         let timeToEmpty: number | null = null;
@@ -189,31 +236,61 @@ export default function BatteryProjectionPage() {
             const timeLabel = `${currentHour.toString().padStart(2, '0')}:00`;
             labels.push(timeLabel);
 
-            // Calculate solar generation for this hour
-            const irradiance = getSolarIrradiance(currentHour);
-            const solarGeneration = irradiance * solarCapacityKw * solarEfficiency;
+            // Get real solar irradiance from your AI-predicted data
+            const irradiance = getRealSolarIrradiance(inputs.selectedDate, currentHour);
+            const solarGeneration = irradiance * systemSizeKw * efficiency;
             solarData.push(solarGeneration);
             totalSolarGenerated += solarGeneration;
 
-            // Calculate load consumption
+            // Calculate load from existing appliances (based on their patterns)
+            let existingLoad = 0;
+            for (const appliance of existingAppliancePatterns) {
+                if (appliance.pattern(currentHour)) {
+                    // Add ±10% random variation as per document specification
+                    const variation = 0.9 + Math.random() * 0.2;
+                    existingLoad += (appliance.power * variation) / 1000; // Convert to kW
+                }
+            }
+
+            // Add load from selected projection appliances (they run continuously)
+            const projectionLoad = selectedAppliances.reduce((sum, a) => sum + (a.wattage / 1000), 0);
+            
+            // Add base household load
+            const baseLoad = 0.1; // 100W base load for always-on devices
+            
+            const totalLoad = existingLoad + projectionLoad + baseLoad;
             loadData.push(totalLoad);
             totalLoadConsumed += totalLoad;
 
             // Calculate net energy flow (solar - load)
             const netEnergy = solarGeneration - totalLoad;
             
-            // Update battery SoC
-            const energyChangeKwh = netEnergy;
-            const socChange = (energyChangeKwh / batteryCapacityKwh) * 100;
-            
+            // Update battery SoC with realistic charging/discharging limits
             if (i > 0) { // Don't change SoC for the first data point
-                currentSoC = Math.max(minSoC, Math.min(100, currentSoC + socChange));
+                if (netEnergy > 0) {
+                    // Charging: limited by max charge rate
+                    if (currentSoC < batteryCapacityKwh) {
+                        const maxChargeRate = batteryCapacityKwh * 0.2; // Max 20% per hour
+                        const charge = Math.min(netEnergy, batteryCapacityKwh - currentSoC, maxChargeRate);
+                        currentSoC += charge;
+                    }
+                } else {
+                    // Discharging: limited by max discharge rate and minimum SoC
+                    const deficit = Math.abs(netEnergy);
+                    if (currentSoC > minSoCKwh) {
+                        const maxDischargeRate = batteryCapacityKwh * 0.3; // Max 30% per hour
+                        const discharge = Math.min(deficit, currentSoC - minSoCKwh, maxDischargeRate);
+                        currentSoC -= discharge;
+                    }
+                }
             }
             
-            socData.push(currentSoC);
+            // Convert back to percentage for display
+            const socPercentage = (currentSoC / batteryCapacityKwh) * 100;
+            socData.push(socPercentage);
 
-            // Check for low battery
-            if (currentSoC <= minSoC + 5) {
+            // Check for low battery (within 5% of minimum)
+            if (socPercentage <= minSoC + 5) {
                 lowBatteryWarning = true;
                 if (timeToEmpty === null) {
                     timeToEmpty = i;
@@ -240,6 +317,7 @@ export default function BatteryProjectionPage() {
             currentSoC: 80,
             startTime: new Date().getHours(),
             duration: 6,
+            selectedDate: new Date().toISOString().split('T')[0],
         });
     };
 
@@ -278,7 +356,7 @@ export default function BatteryProjectionPage() {
                     <CardHeader>
                         <CardTitle className="text-2xl font-bold text-center">Battery SoC Projection</CardTitle>
                         <p className="text-center text-gray-600">
-                            Simulate your battery performance with different appliance loads
+                            Simulate your battery performance with different appliance loads using real solar data
                         </p>
                     </CardHeader>
                     <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -300,7 +378,11 @@ export default function BatteryProjectionPage() {
                                     </div>
                                     <div className="flex justify-between">
                                         <span>Min SoC:</span>
-                                        <span className="font-semibold">{system.minimum_state_of_charge}%</span>
+                                        <span className="font-semibold">20%</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Efficiency:</span>
+                                        <span className="font-semibold">65%</span>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -312,14 +394,23 @@ export default function BatteryProjectionPage() {
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     <div>
+                                        <Label htmlFor="selected-date">Date</Label>
+                                        <Input 
+                                            id="selected-date" 
+                                            type="date" 
+                                            value={inputs.selectedDate} 
+                                            onChange={e => handleInputChange('selectedDate', e.target.value)} 
+                                        />
+                                    </div>
+                                    <div>
                                         <Label htmlFor="current-soc">Current Battery SoC (%)</Label>
                                         <Input 
                                             id="current-soc" 
                                             type="number" 
-                                            min="0" 
+                                            min="20" 
                                             max="100"
                                             value={inputs.currentSoC} 
-                                            onChange={e => handleInputChange('currentSoC', parseInt(e.target.value) || 0)} 
+                                            onChange={e => handleInputChange('currentSoC', parseInt(e.target.value) || 20)} 
                                         />
                                     </div>
                                     <div>
@@ -354,9 +445,12 @@ export default function BatteryProjectionPage() {
                             {/* Appliance Selection */}
                             <Card>
                                 <CardHeader>
-                                    <CardTitle className="text-lg">Select Appliances</CardTitle>
+                                    <CardTitle className="text-lg">Additional Appliances</CardTitle>
                                     <p className="text-sm text-gray-600">
-                                        Total Load: {totalSelectedLoad}W
+                                        Additional Load: {totalSelectedLoad}W
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                        Your existing appliances will run based on their normal patterns
                                     </p>
                                 </CardHeader>
                                 <CardContent className="space-y-2 max-h-64 overflow-y-auto">
@@ -405,26 +499,27 @@ export default function BatteryProjectionPage() {
                                                             label: 'Battery SoC (%)',
                                                             data: results.socData,
                                                             borderColor: '#3b82f6',
-                                                            backgroundColor: '#3b82f6',
+                                                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
                                                             tension: 0.1,
                                                             yAxisID: 'y',
+                                                            fill: true,
                                                         },
-                                                        // {
-                                                        //     label: 'Solar Generation (kW)',
-                                                        //     data: results.solarData,
-                                                        //     borderColor: '#22c55e',
-                                                        //     backgroundColor: '#22c55e',
-                                                        //     tension: 0.1,
-                                                        //     yAxisID: 'y1',
-                                                        // },
-                                                        // {
-                                                        //     label: 'Load (kW)',
-                                                        //     data: results.loadData,
-                                                        //     borderColor: '#ef4444',
-                                                        //     backgroundColor: '#ef4444',
-                                                        //     tension: 0.1,
-                                                        //     yAxisID: 'y1',
-                                                        // },
+                                                        {
+                                                            label: 'Solar Generation (kW)',
+                                                            data: results.solarData,
+                                                            borderColor: '#22c55e',
+                                                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                                                            tension: 0.1,
+                                                            yAxisID: 'y1',
+                                                        },
+                                                        {
+                                                            label: 'Total Load (kW)',
+                                                            data: results.loadData,
+                                                            borderColor: '#ef4444',
+                                                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                                            tension: 0.1,
+                                                            yAxisID: 'y1',
+                                                        },
                                                     ],
                                                 }}
                                                 options={{

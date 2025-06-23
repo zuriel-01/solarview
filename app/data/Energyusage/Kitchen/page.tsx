@@ -211,9 +211,8 @@ export default function KitchenEnergyUsage() {
 
       for (const [applianceId, { power, usagePattern }] of Object.entries(applianceInfo)) {
         if (usagePattern[hour]) {
-          // Add some realistic variation (±10%)
-          const variation = 0.9 + Math.random() * 0.2;
-          const value = (power * variation) / 1000; // Convert to kWh
+          // Remove random variation - use actual power consumption
+          const value = power / 1000; // Convert to kWh
           usage[applianceId] = value;
           usageTotal += value;
         } else {
@@ -238,55 +237,41 @@ export default function KitchenEnergyUsage() {
       const dailyTotals = Array(daysInMonth).fill(0).map(() => 
         Object.keys(applianceInfo).reduce((acc, id) => ({ ...acc, [id]: 0 }), {})
       );
-      const dailyCounts = Array(daysInMonth).fill(0);
 
       hourlyUsage.forEach(usage => {
         const dayOfMonth = usage.date.getDate() - 1;
-        dailyCounts[dayOfMonth]++;
-        Object.keys(applianceInfo).forEach(applianceId => {
-          dailyTotals[dayOfMonth][applianceId] += usage[applianceId] || 0;
-        });
-      });
-
-      // Calculate daily averages
-      dailyTotals.forEach((day, i) => {
-        Object.keys(applianceInfo).forEach(applianceId => {
-          day[applianceId] = dailyCounts[i] ? day[applianceId] / dailyCounts[i] : 0;
-        });
+        if (dayOfMonth >= 0 && dayOfMonth < daysInMonth) {
+          Object.keys(applianceInfo).forEach(applianceId => {
+            dailyTotals[dayOfMonth][applianceId] += usage[applianceId] || 0;
+          });
+        }
       });
 
       allLabels = Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
       hourlyUsage = dailyTotals.map((day, i) => ({
         time: (i + 1).toString(),
-        date: new Date(),
+        date: new Date(2024, selectedMonth, i + 1),
         ...day
       }));
     } else {
       // Yearly view
-      const monthlyAverages = Array(12).fill(0).map(() => 
+      const monthlyTotals = Array(12).fill(0).map(() => 
         Object.keys(applianceInfo).reduce((acc, id) => ({ ...acc, [id]: 0 }), {})
       );
-      const monthCounts = Array(12).fill(0);
 
       hourlyUsage.forEach(usage => {
         const month = usage.date.getMonth();
-        monthCounts[month]++;
-        Object.keys(applianceInfo).forEach(applianceId => {
-          monthlyAverages[month][applianceId] += usage[applianceId] || 0;
-        });
-      });
-
-      // Calculate monthly averages
-      monthlyAverages.forEach((month, i) => {
-        Object.keys(applianceInfo).forEach(applianceId => {
-          month[applianceId] = monthCounts[i] ? month[applianceId] / monthCounts[i] : 0;
-        });
+        if (month >= 0 && month < 12) {
+          Object.keys(applianceInfo).forEach(applianceId => {
+            monthlyTotals[month][applianceId] += usage[applianceId] || 0;
+          });
+        }
       });
 
       allLabels = monthAbbr;
-      hourlyUsage = monthlyAverages.map((month, i) => ({
+      hourlyUsage = monthlyTotals.map((month, i) => ({
         time: monthAbbr[i],
-        date: new Date(),
+        date: new Date(2024, i, 1),
         ...month
       }));
     }
@@ -358,7 +343,7 @@ export default function KitchenEnergyUsage() {
             <CardTitle>Your Kitchen Appliances</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="text-center p-4 bg-blue-50 rounded-lg">
                 <div className="text-2xl font-bold text-blue-600">{appliances.length}</div>
                 <div className="text-sm text-gray-600">Total Appliances</div>
@@ -371,6 +356,12 @@ export default function KitchenEnergyUsage() {
                 <div className="text-2xl font-bold text-purple-600">{appliances.reduce((sum, a) => sum + a.usage_hours, 0).toFixed(1)}h</div>
                 <div className="text-sm text-gray-600">Total Usage Hours</div>
               </div>
+              <div className="text-center p-4 bg-orange-50 rounded-lg">
+                <div className="text-2xl font-bold text-orange-600">
+                  {(appliances.reduce((sum, a) => sum + (a.wattage * a.usage_hours), 0) / 1000).toFixed(1)}
+                </div>
+                <div className="text-sm text-gray-600">Daily Energy (kWh)</div>
+              </div>
             </div>
             
             {/* List of kitchen appliances */}
@@ -380,6 +371,12 @@ export default function KitchenEnergyUsage() {
                   <div>
                     <div className="font-medium">{appliance.appliance_name}</div>
                     <div className="text-sm text-gray-600">{appliance.wattage}W • {appliance.usage_hours}h/day</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-semibold text-blue-600">
+                      {((appliance.wattage * appliance.usage_hours) / 1000).toFixed(2)} kWh
+                    </div>
+                    <div className="text-xs text-gray-500">per day</div>
                   </div>
                 </div>
               ))}
@@ -436,7 +433,11 @@ export default function KitchenEnergyUsage() {
                   legend: { position: 'top' },
                   tooltip: { 
                     callbacks: {
-                      label: (context) => `${context.dataset.label}: ${context.formattedValue} kWh`
+                      label: (context) => {
+                        const label = context.dataset.label || '';
+                        const value = context.parsed.y;
+                        return `${label}: ${value.toFixed(3)} kWh`;
+                      }
                     }
                   },
                 },
@@ -463,8 +464,27 @@ export default function KitchenEnergyUsage() {
               <div className="space-y-3">
                 <h4 className="font-semibold">Total Usage</h4>
                 <div className="text-center p-4 bg-red-50 rounded-lg">
-                  <div className="text-2xl font-bold text-red-600">{totalUsage.toFixed(2)}</div>
+                  <div className="text-2xl font-bold text-red-600">
+                    {isNaN(totalUsage) ? '0.00' : totalUsage.toFixed(2)}
+                  </div>
                   <div className="text-sm text-gray-600">Total Energy Used (kWh)</div>
+                </div>
+                <div className="text-center p-3 bg-blue-50 rounded-lg">
+                  <div className="text-lg font-bold text-blue-600">
+                    {(() => {
+                      let average = 0;
+                      if (view === 'daily') {
+                        average = totalUsage / 24;
+                      } else if (view === 'monthly') {
+                        const daysInMonth = new Date(2024, selectedMonth + 1, 0).getDate();
+                        average = totalUsage / daysInMonth;
+                      } else {
+                        average = totalUsage / 365;
+                      }
+                      return isNaN(average) ? '0.000' : average.toFixed(3);
+                    })()}
+                  </div>
+                  <div className="text-sm text-gray-600">Average per {view === 'daily' ? 'Hour' : 'Day'} (kWh)</div>
                 </div>
               </div>
 
@@ -472,12 +492,23 @@ export default function KitchenEnergyUsage() {
               <div className="space-y-3">
                 <h4 className="font-semibold">Per Appliance Usage</h4>
                 <div className="space-y-2">
-                  {datasets.map((dataset) => {
-                    const total = (dataset.data as number[]).reduce((sum, val) => sum + val, 0);
+                  {datasets.map((dataset, index) => {
+                    const total = (dataset.data as number[]).reduce((sum, val) => sum + (isNaN(val) ? 0 : val), 0);
+                    const appliance = appliances[index];
+                    const percentage = totalUsage > 0 ? (total / totalUsage) * 100 : 0;
+                    
                     return (
-                      <div key={dataset.label} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                        <span className="font-medium">{dataset.label}</span>
-                        <span className="text-sm text-gray-600">{total.toFixed(2)} kWh</span>
+                      <div key={dataset.label} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <span className="font-medium">{dataset.label}</span>
+                          <div className="text-xs text-gray-500">
+                            {appliance?.wattage}W • {appliance?.usage_hours}h/day
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-semibold">{total.toFixed(2)} kWh</span>
+                          <div className="text-xs text-gray-500">({percentage.toFixed(1)}%)</div>
+                        </div>
                       </div>
                     );
                   })}
@@ -485,13 +516,16 @@ export default function KitchenEnergyUsage() {
               </div>
             </div>
             
-            {/* Kitchen Usage Info */}
-            <div className="mt-4 p-3 bg-yellow-50 rounded-lg">
-              <p className="text-sm text-gray-700">
-                <strong>Kitchen Schedule:</strong> Usage patterns include meal preparation times (breakfast 7-9am, 
-                lunch 11am-1pm, dinner 5-7pm), with appliances like fridges running continuously and cooking 
-                appliances used during meal times.
-              </p>
+            {/* Usage Insights */}
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+              <h4 className="font-semibold mb-2">Kitchen Usage Insights</h4>
+              <div className="text-sm text-gray-600 space-y-1">
+                <p>• Appliance usage patterns based on typical kitchen activities</p>
+                <p>• Fridges/Freezers: Continuous operation distributed throughout the day</p>
+                <p>• Microwaves/Ovens: Meal times (breakfast 7-8am, lunch 12-1pm, dinner 6-7pm)</p>
+                <p>• Coffee makers/Kettles: Morning and afternoon (6-7am, 2-3pm)</p>
+                <p>• Calculations use exact wattage without artificial variation for consistent results</p>
+              </div>
             </div>
           </CardContent>
         </Card>

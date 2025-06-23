@@ -186,8 +186,8 @@ export default function BatteryStatusPage() {
         setSystemConfig(savedSystem);
         setAppliances(savedAppliances);
         
-        //console.log('Loaded system config:', savedSystem);
-        //console.log('Loaded appliances:', savedAppliances);
+        console.log('Loaded system config:', savedSystem);
+        console.log('Loaded appliances:', savedAppliances);
       } catch (error) {
         console.error('Error loading system configuration:', error);
         alert('Failed to load system configuration');
@@ -231,13 +231,15 @@ export default function BatteryStatusPage() {
     });
     filtered.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-    // Battery configuration from user's system
+    // Battery configuration from user's system (following document specs)
     const batteryCapacityKwh = (systemConfig.battery_capacity * 12) / 1000; // Convert Ah to kWh (assuming 12V)
-    const minSoCPercent = systemConfig.minimum_state_of_charge;
+    const minSoCPercent = 20; // Fixed at 20% as per document
     const minSoCKwh = (batteryCapacityKwh * minSoCPercent) / 100;
     const usableCapacity = batteryCapacityKwh - minSoCKwh;
     const systemSizeKw = (systemConfig.panel_rating * systemConfig.number_of_panels) / 1000;
-    const efficiency = 0.75;
+    
+    // Use base efficiency without aging factor for now
+    const efficiency = 0.65; // Base efficiency as per document
 
     // Create appliance patterns from user's actual appliances
     const appliancePatterns = appliances.map(appliance => ({
@@ -293,6 +295,7 @@ export default function BatteryStatusPage() {
       
       for (const appliance of appliancePatterns) {
         if (appliance.pattern(hour)) {
+          // Add ±10% random variation as per document specification
           const variation = 0.9 + Math.random() * 0.2;
           const appLoad = (appliance.power * variation) / 1000; // Convert to kW
           load += appLoad;
@@ -340,17 +343,17 @@ export default function BatteryStatusPage() {
 
       // Debug logging for first few hours
       if (hourly.length < 5) {
-        // //console.log(`Hour ${time}:`, {
-        //   irradiance: irradiance.toFixed(3),
-        //   solar: solar.toFixed(3),
-        //   load: load.toFixed(3),
-        //   excess: (solar - load).toFixed(3),
-        //   startSOC: startHourSOC.toFixed(2),
-        //   endSOC: soc.toFixed(2),
-        //   charge: charge.toFixed(3),
-        //   discharge: discharge.toFixed(3),
-        //   activeAppliances: activeAppliances.length
-        // });
+        console.log(`Hour ${time}:`, {
+          irradiance: irradiance.toFixed(3),
+          solar: solar.toFixed(3),
+          load: load.toFixed(3),
+          excess: (solar - load).toFixed(3),
+          startSOC: startHourSOC.toFixed(2),
+          endSOC: soc.toFixed(2),
+          charge: charge.toFixed(3),
+          discharge: discharge.toFixed(3),
+          activeAppliances: activeAppliances.length
+        });
       }
 
       // Calculate percentages for visualization
@@ -384,7 +387,7 @@ export default function BatteryStatusPage() {
     if (view === 'daily') {
       allLabels = hourly.map(h => h.time);
     } else if (view === 'monthly') {
-      const daysInMonth = new Date(2025, selectedMonth + 1, 0).getDate();
+      const daysInMonth = new Date(2024, selectedMonth + 1, 0).getDate();
       const dailyTotals = Array(daysInMonth).fill(0).map(() => ({
         base: { sum: 0, count: 0 },
         charge: { sum: 0, count: 0 },
@@ -418,7 +421,7 @@ export default function BatteryStatusPage() {
       allLabels = Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
       hourly = dailyAverages.map((day, i) => ({
         time: (i + 1).toString(),
-        date: new Date(2025, selectedMonth, i + 1),
+        date: new Date(2024, selectedMonth, i + 1),
         base: day.base,
         charge: day.charge,
         low: day.low,
@@ -465,7 +468,7 @@ export default function BatteryStatusPage() {
       allLabels = months.map(m => m.slice(0, 3).toUpperCase());
       hourly = monthlyAverages.map((month, i) => ({
         time: months[i].slice(0, 3).toUpperCase(),
-        date: new Date(2025, i, 1),
+        date: new Date(2024, i, 1),
         base: month.base,
         charge: month.charge,
         low: month.low,
@@ -530,7 +533,7 @@ export default function BatteryStatusPage() {
         minCharge: isNaN(minCharge) ? '0.0' : minCharge.toFixed(1)
       });
     } else if (view === 'monthly') {
-      const daysInMonth = new Date(2025, selectedMonth + 1, 0).getDate();
+      const daysInMonth = new Date(2024, selectedMonth + 1, 0).getDate();
       const totalCharged = hourly.reduce((sum, h) => sum + (isNaN(h.charge) ? 0 : h.charge), 0) * daysInMonth;
       const totalDischarged = hourly.reduce((sum, h) => {
         const load = h.debug.load || 0;
@@ -580,11 +583,12 @@ export default function BatteryStatusPage() {
       });
     }
 
-    // Debug output
+    // Debug output with enhanced information
     console.log('Battery Analysis:', {
-      date: `${selectedMonth + 1}/${selectedDay}/2025`,
+      date: `${selectedMonth + 1}/${selectedDay}/2024`,
       systemSizeKw: systemSizeKw.toFixed(2),
       batteryCapacityKwh: batteryCapacityKwh.toFixed(2),
+      minSoCKwh: minSoCKwh.toFixed(2),
       totalDailyLoadKWh: totalDailyLoad.toFixed(2),
       peakLoadKW: peakLoad.toFixed(2),
       peakHour,
@@ -592,6 +596,8 @@ export default function BatteryStatusPage() {
       batteryEndPercent: ((soc / batteryCapacityKwh) * 100).toFixed(2),
       totalCharged: chargeTotal.toFixed(2),
       totalDischarged: dischargeTotal.toFixed(2),
+      dataPointsProcessed: filtered.length,
+      avgDailyIrradiance: (filtered.reduce((sum, entry) => sum + entry["corrected_irradiance_kWh/m2"], 0) / filtered.length).toFixed(3)
     });
 
     console.log('Appliance Daily Usage (kWh):', 
@@ -599,6 +605,15 @@ export default function BatteryStatusPage() {
         .sort(([,a], [,b]) => b - a)
         .map(([app, usage]) => `${app}: ${usage.toFixed(2)} kWh`)
     );
+
+    // Check if we have realistic load patterns
+    if (totalDailyLoad < 1) {
+      console.warn('⚠️ Very low daily load detected. Check appliance configurations.');
+    }
+    
+    if (peakLoad < 0.5) {
+      console.warn('⚠️ Very low peak load. This might cause unrealistic battery behavior.');
+    }
 
   }, [selectedMonth, selectedDay, view, systemConfig, appliances]);
 
@@ -638,7 +653,7 @@ export default function BatteryStatusPage() {
       <div className="max-w-6xl mx-auto px-4">
         
         <div className="flex items-center justify-between mb-6">
-          <Link href="/home">
+          <Link href="/">
             <Button variant="outline">Back</Button>
           </Link>
           <h2 className="text-2xl font-bold">Battery Status - {getDateLabel()}</h2>
