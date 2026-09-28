@@ -1,0 +1,1 @@
+export const PREDICTION_YEAR = 2025;

@@ -1,5 +1,10 @@
-// 'use client';
+import { redirect } from 'next/navigation';
 
+export default function AuthPage() {
+	redirect('/auth/login');
+}
+
+/*
 // import { useState, useEffect } from 'react';
 // import { useSearchParams } from 'next/navigation';
 
@@ -125,4 +130,5 @@
 //       </div>
 //     </div>
 //   );
-// } 
+// }
+*/

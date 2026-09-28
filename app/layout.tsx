@@ -1,17 +1,18 @@
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import type { Metadata } from "next";
-import { Geist, Poppins } from "next/font/google";
+import { Manrope, Sora } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const sora = Sora({
+  variable: "--font-sora",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
-const poppins = Poppins({
-  variable: "--font-poppins",
-  weight: "400",
+const manrope = Manrope({
+  variable: "--font-manrope",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
 export const metadata: Metadata = {
@@ -27,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${poppins.variable} antialiased font-sans`}
+        className={`${sora.variable} ${manrope.variable} antialiased font-sans`}
       >
         <SessionProvider>{children}</SessionProvider>
       </body>

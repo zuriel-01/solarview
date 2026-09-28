@@ -1,5 +1,28 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
+import { PREDICTION_YEAR } from '@/app/data/constants';
+
+const DEV_USER_ID = 'dev-user';
+
+const MOCK_SYSTEM = {
+  battery_capacity: 5000,
+  minimum_state_of_charge: 20,
+  installation_year: PREDICTION_YEAR,
+  panel_rating: 400,
+  number_of_panels: 10,
+};
+
+const MOCK_APPLIANCES = [
+  { id: '1', appliance_name: 'Ceiling Fan', wattage: 75, usage_hours: 8, room: 'parlour' },
+  { id: '2', appliance_name: 'LED TV', wattage: 100, usage_hours: 6, room: 'parlour' },
+  { id: '3', appliance_name: 'LED Bulb', wattage: 10, usage_hours: 10, room: 'parlour' },
+  { id: '4', appliance_name: 'Refrigerator', wattage: 150, usage_hours: 24, room: 'kitchen' },
+  { id: '5', appliance_name: 'Microwave', wattage: 1000, usage_hours: 1, room: 'kitchen' },
+  { id: '6', appliance_name: 'Electric Kettle', wattage: 1500, usage_hours: 0.5, room: 'kitchen' },
+  { id: '7', appliance_name: 'Air Conditioner', wattage: 1200, usage_hours: 6, room: 'bedroom' },
+  { id: '8', appliance_name: 'Ceiling Fan', wattage: 75, usage_hours: 8, room: 'bedroom' },
+  { id: '9', appliance_name: 'Phone Charger', wattage: 20, usage_hours: 4, room: 'bedroom' },
+];
 
 // Solar System Functions
 export async function saveSolarSystem(
@@ -13,8 +36,10 @@ export async function saveSolarSystem(
   user: User,
   supabaseClient?: SupabaseClient
 ) {
+  if (user.id === DEV_USER_ID) return [{ id: 'dev', ...systemData }];
+
   const supabase = supabaseClient || createClientComponentClient();
-  
+
   try {
     console.log('Starting saveSolarSystem for user:', user.id);
     console.log('Input system data:', systemData);
@@ -97,8 +122,10 @@ export async function saveSolarSystem(
 }
 
 export async function getUserSolarSystem(user: User, supabaseClient?: SupabaseClient) {
+  if (user.id === DEV_USER_ID) return { ...MOCK_SYSTEM };
+
   const supabase = supabaseClient || createClientComponentClient();
-  
+
   try {
     console.log('Getting system for user:', user.id);
 
@@ -117,7 +144,7 @@ export async function getUserSolarSystem(user: User, supabaseClient?: SupabaseCl
       return {
         battery_capacity: data.battery_capacity,
         minimum_state_of_charge: data.min_soc,
-        installation_year: data.installation_year || 2024, // Use saved value or fallback
+        installation_year: data.installation_year || PREDICTION_YEAR, // Use saved value or fallback
         panel_rating: data.panel_rating || Math.round((data.panel_size * 1000) / (data.number_of_panels || 10)),
         number_of_panels: data.number_of_panels || 10
       };
@@ -141,8 +168,10 @@ export async function saveInitialAppliances(
   user: User,
   supabaseClient?: SupabaseClient
 ) {
+  if (user.id === DEV_USER_ID) return appliances.map((a, i) => ({ id: String(i), name: a.appliance_name, wattage: a.wattage, room_id: a.room, usage_hours: a.usage_hours }));
+
   const supabase = supabaseClient || createClientComponentClient();
-  
+
   try {
     console.log('Saving appliances for user:', user.id);
 
@@ -208,8 +237,10 @@ export async function saveInitialAppliances(
 }
 
 export async function getUserInitialAppliances(user: User, supabaseClient?: SupabaseClient) {
+  if (user.id === DEV_USER_ID) return [...MOCK_APPLIANCES];
+
   const supabase = supabaseClient || createClientComponentClient();
-  
+
   try {
     console.log('Getting appliances for user:', user.id);
 
@@ -258,8 +289,10 @@ export async function getUserInitialAppliances(user: User, supabaseClient?: Supa
 }
 
 export async function deleteConfigAppliance(applianceId: string, user: User, supabaseClient?: SupabaseClient) {
+  if (user.id === DEV_USER_ID) return;
+
   const supabase = supabaseClient || createClientComponentClient();
-  
+
   try {
     // Get the appliance and verify ownership
     const { data: appliance, error: fetchError } = await supabase

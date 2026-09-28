@@ -1,12 +1,11 @@
 "use client";
 
 import { AlignJustify, Radar, X, LogOut } from "lucide-react"
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import type { Session } from '@supabase/supabase-js';
+import { PREDICTION_YEAR } from '@/app/data/constants';
 
 interface Notification {
   id: number;
@@ -26,62 +25,23 @@ export const Header = () => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<string>('01');
   const [selectedDay, setSelectedDay] = useState<string>('01');
-  const [selectedDate, setSelectedDate] = useState<string>('2024-01-01');
+  const [selectedDate, setSelectedDate] = useState<string>(`${PREDICTION_YEAR}-01-01`);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const user = true;
+  const loading = false;
   const router = useRouter();
-  const supabase = createClientComponentClient();
-
-  useEffect(() => {
-    // Get initial session
-    const getSession = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) {
-          console.error('Error getting session:', error);
-        } else {
-          setUser(session?.user || null);
-        }
-      } catch (error) {
-        console.error('Error in getSession:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    getSession();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session:any) => {
-      setUser(session?.user || null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [supabase.auth]);
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
   };
 
   const toggleDataSubmenu = () => {
-    if (!user) {
-      router.push('/auth/login');
-      return;
-    }
     setIsDataOpen(!isDataOpen);
   };
 
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-      setUser(null);
-      setShowLogoutConfirm(false);
-      router.push('/');
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
+  const handleLogout = () => {
+    setShowLogoutConfirm(false);
+    router.push('/');
   };
 
   // Simulate getting optimization tips (since we don't have the API endpoint)
@@ -131,7 +91,7 @@ export const Header = () => {
   };
 
   const handleConfirmDate = () => {
-    const date = new Date(`2024-${selectedMonth}-${selectedDay}`);
+    const date = new Date(`${PREDICTION_YEAR}-${selectedMonth}-${selectedDay}`);
     handleDateSelect(date);
   };
 
@@ -151,7 +111,7 @@ export const Header = () => {
   ];
 
   const getDaysInMonth = (month: string) => {
-    const daysInMonth = new Date(2024, parseInt(month), 0).getDate();
+    const daysInMonth = new Date(PREDICTION_YEAR, parseInt(month), 0).getDate();
     return Array.from({ length: daysInMonth }, (_, i) => {
       const day = (i + 1).toString().padStart(2, '0');
       return { value: day, label: day };
@@ -193,17 +153,20 @@ export const Header = () => {
           </div>
           <AlignJustify className="ml-auto md:hidden cursor-pointer" onClick={toggleMenu} />
         </div>
-        <nav className="flex items-center gap-10 max-md:hidden">
-          <Link href="/" className="hover:text-yellow-300 transition-colors">
+        <nav className="flex items-center gap-8 text-base max-md:hidden">
+          <Link href="/" className="whitespace-nowrap hover:text-yellow-300 transition-colors">
             Home
+          </Link>
+          <Link href="/how-to-use" className="whitespace-nowrap hover:text-yellow-300 transition-colors">
+            How to use
           </Link>
           {user ? (
             <>
-              <Link href="/data/Settings" className="hover:text-yellow-300 transition-colors">
+              <Link href="/data/Settings" className="whitespace-nowrap hover:text-yellow-300 transition-colors">
                 Settings
               </Link>
               <div className="relative group">
-                <button onClick={toggleDataSubmenu} className="hover:text-yellow-300 transition-colors">
+                <button onClick={toggleDataSubmenu} className="whitespace-nowrap hover:text-yellow-300 transition-colors">
                   Data
                 </button>
                 {isDataOpen && (
@@ -291,9 +254,12 @@ export const Header = () => {
             <div className="flex justify-end p-5">
               <X className="text-white cursor-pointer" onClick={toggleMenu} />
             </div>
-            <div className="flex flex-col items-center gap-8 mt-10 text-2xl">
-              <Link href="/" className="hover:text-yellow-300 transition-colors" onClick={toggleMenu}>
+            <div className="flex flex-col items-center gap-8 mt-10 text-xl">
+              <Link href="/" className="whitespace-nowrap hover:text-yellow-300 transition-colors" onClick={toggleMenu}>
                 Home
+              </Link>
+              <Link href="/how-to-use" className="whitespace-nowrap hover:text-yellow-300 transition-colors" onClick={toggleMenu}>
+                How to use
               </Link>
               {user ? (
                 <>
