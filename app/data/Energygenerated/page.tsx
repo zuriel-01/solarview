@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,7 +52,6 @@ export default function EnergyGenerated() {
   const [solarEnergyGenerated, setSolarEnergyGenerated] = useState<number>(0);
   const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
   
   const router = useRouter();
   const supabase = createClientComponentClient();
@@ -61,13 +60,11 @@ export default function EnergyGenerated() {
   useEffect(() => {
     const loadUserAndSystem = async () => {
       try {
-        let currentUser: any = { id: 'dev-user' };
+        let currentUser: { id: string } = { id: 'dev-user' };
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) currentUser = session.user;
         } catch {}
-
-        setUser(currentUser);
 
         // Load system configuration
         const savedSystem = await getUserSolarSystem(currentUser, supabase);
@@ -104,7 +101,7 @@ export default function EnergyGenerated() {
     return `Year ${PREDICTION_YEAR}`;
   };
 
-  const calculateEnergyProduction = (irradiance: number) => {
+  const calculateEnergyProduction = useCallback((irradiance: number) => {
     if (!systemConfig) {
       console.log('No system config available');
       return 0;
@@ -134,7 +131,7 @@ export default function EnergyGenerated() {
     console.log(`Production calculation: ${irradiance} * ${systemSizeKw} * ${efficiency} = ${production}`);
     
     return production;
-  };
+  }, [systemConfig]);
 
   useEffect(() => {
     if (!systemConfig) return;
@@ -247,7 +244,7 @@ export default function EnergyGenerated() {
       }]);
       setSolarEnergyGenerated(yearlyTotal);
     }
-  }, [selectedMonth, selectedDay, view, systemConfig]);
+  }, [selectedMonth, selectedDay, view, systemConfig, calculateEnergyProduction]);
 
   if (loading) {
     return (

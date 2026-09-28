@@ -111,7 +111,7 @@ const getAppliancePattern = (applianceName: string, room: string, usageHours: nu
   return (h: number) => h >= 6 && h < (6 + usageHours) % 24;
 };
 
-const createOptimizationTips = (systemConfig: SystemConfig): Tip[] => [
+const createOptimizationTips = (): Tip[] => [
   {
     id: 1,
     category: 'weather',
@@ -293,7 +293,6 @@ export default function OptimizationTips() {
   const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
   const [appliances, setAppliances] = useState<Appliance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
   const [optimizationTips, setOptimizationTips] = useState<Tip[]>([]);
   
   const router = useRouter();
@@ -303,13 +302,11 @@ export default function OptimizationTips() {
   useEffect(() => {
     const loadUserAndSystem = async () => {
       try {
-        let currentUser: any = { id: 'dev-user' };
+        let currentUser: { id: string } = { id: 'dev-user' };
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) currentUser = session.user;
         } catch {}
-
-        setUser(currentUser);
 
         // Load system configuration and appliances
         const [savedSystem, savedAppliances] = await Promise.all([
@@ -327,7 +324,7 @@ export default function OptimizationTips() {
         setAppliances(savedAppliances);
         
         // Create personalized optimization tips based on user's system
-        const tips = createOptimizationTips(savedSystem);
+        const tips = createOptimizationTips();
         setOptimizationTips(tips);
         
         console.log('Loaded system config:', savedSystem);

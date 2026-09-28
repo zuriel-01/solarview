@@ -3,6 +3,7 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { PREDICTION_YEAR } from '@/app/data/constants';
 
 const DEV_USER_ID = 'dev-user';
+type AppUser = Pick<User, 'id'>;
 
 const MOCK_SYSTEM = {
   battery_capacity: 5000,
@@ -33,7 +34,7 @@ export async function saveSolarSystem(
     panel_rating: number;
     number_of_panels: number;
   },
-  user: User,
+  user: AppUser,
   supabaseClient?: SupabaseClient
 ) {
   if (user.id === DEV_USER_ID) return [{ id: 'dev', ...systemData }];
@@ -121,7 +122,7 @@ export async function saveSolarSystem(
   }
 }
 
-export async function getUserSolarSystem(user: User, supabaseClient?: SupabaseClient) {
+export async function getUserSolarSystem(user: AppUser, supabaseClient?: SupabaseClient) {
   if (user.id === DEV_USER_ID) return { ...MOCK_SYSTEM };
 
   const supabase = supabaseClient || createClientComponentClient();
@@ -165,7 +166,7 @@ export async function saveInitialAppliances(
     usage_hours: number;
     room: string;
   }>,
-  user: User,
+  user: AppUser,
   supabaseClient?: SupabaseClient
 ) {
   if (user.id === DEV_USER_ID) return appliances.map((a, i) => ({ id: String(i), name: a.appliance_name, wattage: a.wattage, room_id: a.room, usage_hours: a.usage_hours }));
@@ -236,7 +237,13 @@ export async function saveInitialAppliances(
   }
 }
 
-export async function getUserInitialAppliances(user: User, supabaseClient?: SupabaseClient) {
+export async function getUserInitialAppliances(user: AppUser, supabaseClient?: SupabaseClient): Promise<Array<{
+  id: string;
+  appliance_name: string;
+  wattage: number;
+  usage_hours: number;
+  room: string;
+}>> {
   if (user.id === DEV_USER_ID) return [...MOCK_APPLIANCES];
 
   const supabase = supabaseClient || createClientComponentClient();
@@ -288,8 +295,10 @@ export async function getUserInitialAppliances(user: User, supabaseClient?: Supa
   }
 }
 
-export async function deleteConfigAppliance(applianceId: string, user: User, supabaseClient?: SupabaseClient) {
-  if (user.id === DEV_USER_ID) return;
+export async function deleteConfigAppliance(applianceId: string, user?: AppUser, supabaseClient?: SupabaseClient) {
+  const currentUser = user || await getCurrentUser();
+  if (!currentUser) throw new Error('Authentication required');
+  if (currentUser.id === DEV_USER_ID) return;
 
   const supabase = supabaseClient || createClientComponentClient();
 
@@ -310,7 +319,7 @@ export async function deleteConfigAppliance(applianceId: string, user: User, sup
       .eq('id', appliance.room_id)
       .single();
 
-    if (roomError || !room || room.user_id !== user.id) {
+    if (roomError || !room || room.user_id !== currentUser.id) {
       throw new Error('Unauthorized');
     }
 
@@ -365,7 +374,23 @@ export async function getCurrentUser() {
     const { data: { user }, error } = await supabase.auth.getUser();
     if (error) return null;
     return user;
-  } catch (error) {
+  } catch {
     return null;
   }
+}
+
+export async function getUserConfigAppliances() {
+  const user = await getCurrentUser();
+  return user ? getUserInitialAppliances(user) : [...MOCK_APPLIANCES];
+}
+
+export async function saveConfigAppliance(appliance: {
+  appliance_name: string;
+  wattage: number;
+  usage_hours: number;
+  room: string;
+}) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Authentication required');
+  return saveInitialAppliances([appliance], user);
 }

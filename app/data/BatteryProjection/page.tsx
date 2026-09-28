@@ -26,6 +26,7 @@ import {
   getUserInitialAppliances,
 } from '@/lib/db';
 import solarData from '@/app/data/solarData.json';
+import { getDailyUsageFactor } from '@/app/data/usageUtils';
 
 ChartJS.register(
   CategoryScale,
@@ -137,7 +138,6 @@ export default function BatteryProjectionPage() {
     });
     const [results, setResults] = useState<ProjectionResult | null>(null);
     const [loading, setLoading] = useState(true);
-    const [user, setUser] = useState(null);
     
     const router = useRouter();
     const supabase = createClientComponentClient();
@@ -145,13 +145,11 @@ export default function BatteryProjectionPage() {
     useEffect(() => {
         const loadInitialData = async () => {
             try {
-                let currentUser: any = { id: 'dev-user' };
+                let currentUser: { id: string } = { id: 'dev-user' };
                 try {
                   const { data: { session } } = await supabase.auth.getSession();
                   if (session?.user) currentUser = session.user;
                 } catch {}
-
-                setUser(currentUser);
 
                 const [systemData, appliancesData] = await Promise.all([
                     getUserSolarSystem(currentUser, supabase),
@@ -166,7 +164,7 @@ export default function BatteryProjectionPage() {
                     return;
                 }
 
-                const formattedAppliances = appliancesData.map((a: any) => ({
+                const formattedAppliances = appliancesData.map((a) => ({
                     id: a.id,
                     name: a.appliance_name,
                     wattage: a.wattage,
@@ -246,8 +244,7 @@ export default function BatteryProjectionPage() {
             for (const appliance of existingAppliancePatterns) {
                 if (appliance.pattern(currentHour)) {
                     // Add ±10% random variation as per document specification
-                    const variation = 0.9 + Math.random() * 0.2;
-                    existingLoad += (appliance.power * variation) / 1000; // Convert to kW
+                    existingLoad += (appliance.power * getDailyUsageFactor(new Date(inputs.selectedDate), appliance.name)) / 1000;
                 }
             }
 

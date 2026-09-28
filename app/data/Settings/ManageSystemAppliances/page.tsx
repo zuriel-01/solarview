@@ -28,7 +28,7 @@ export default function ManageSystemAppliances() {
   const router = useRouter();
   const supabase = createClientComponentClient();
   
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<{ id: string } | null>(null);
   const [appliances, setAppliances] = useState<Appliance[]>([]);
   const [newAppliance, setNewAppliance] = useState({
     name: '',
@@ -54,7 +54,7 @@ export default function ManageSystemAppliances() {
   // Check authentication first
   useEffect(() => {
     const checkAuth = async () => {
-      let currentUser: any = { id: 'dev-user' };
+      let currentUser: { id: string } = { id: 'dev-user' };
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) currentUser = session.user;
@@ -102,7 +102,13 @@ export default function ManageSystemAppliances() {
         }
 
         // Load appliances data
-        let savedAppliances = [];
+        let savedAppliances: Array<{
+          id: string;
+          appliance_name: string;
+          wattage: number;
+          usage_hours: number;
+          room: string;
+        }> = [];
         try {
           savedAppliances = await getUserInitialAppliances(user, supabase);
           console.log('Appliances data loaded:', savedAppliances);
@@ -124,7 +130,7 @@ export default function ManageSystemAppliances() {
           setAppliances([]);
         }
 
-      } catch (err: any) {
+      } catch (err) {
         console.error('Unexpected error in loadData:', err);
         // Set default values even if there's an error
         setSystem({
@@ -240,9 +246,9 @@ export default function ManageSystemAppliances() {
 
       alert('Configuration saved successfully!');
       router.push('/home');
-    } catch (err: any) {
+    } catch (err) {
       console.error('Save error details:', err);
-      const errorMessage = err?.message || 'Failed to save configuration';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save configuration';
       alert(`Save failed: ${errorMessage}`);
     } finally {
       setSaving(false);

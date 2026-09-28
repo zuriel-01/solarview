@@ -12,7 +12,7 @@ const SYSTEM_SIZE = 2.0; // kW
 
 interface HourlyData {
   hour: number;
-  ALLSKY_SFC_SW_DWN: number;
+  irradiance: number;
   solar: number;
   load: number;
   soc: number;
@@ -40,7 +40,7 @@ const OPTIMIZATION_TIPS: Tip[] = [
     description: '☁️ Solar output was low today. Limit appliance use during early or late hours, or consider a backup energy plan on cloudy days.',
     condition: (hourlyData) => {
       const avgIrradiance = hourlyData.reduce((sum, hour) => 
-        sum + hour.ALLSKY_SFC_SW_DWN, 0) / hourlyData.length;
+        sum + hour.irradiance, 0) / hourlyData.length;
       return avgIrradiance < 0.15;
     }
   },
@@ -51,7 +51,7 @@ const OPTIMIZATION_TIPS: Tip[] = [
     description: '⚡ Solar generation peaked midday but wasn\'t fully used. Shift some appliance use (e.g., ironing or TV) into 10:00–14:00.',
     condition: (hourlyData) => {
       const peakHours = hourlyData.filter(h => h.hour >= 10 && h.hour <= 14);
-      const highIrradiance = peakHours.some(h => h.ALLSKY_SFC_SW_DWN > 0.3);
+      const highIrradiance = peakHours.some(h => h.irradiance > 0.3);
       const lowLoad = peakHours.every(h => h.load < 0.3);
       return highIrradiance && lowLoad;
     }
@@ -88,7 +88,7 @@ const OPTIMIZATION_TIPS: Tip[] = [
         const highPowerActive = h.activeAppliances.some(app => 
           app.power >= 400 && app.isActive
         );
-        return highPowerActive && h.ALLSKY_SFC_SW_DWN < 0.15;
+        return highPowerActive && h.irradiance < 0.15;
       });
     }
   },
@@ -155,7 +155,7 @@ export async function GET(request: Request) {
     const hourlyData = dayData.map(entry => {
       const date = new Date(entry.timestamp);
       const hour = date.getHours();
-      const solar = entry.ALLSKY_SFC_SW_DWN * SYSTEM_SIZE * BATTERY_CONFIG.efficiency;
+      const solar = entry["corrected_irradiance_kWh/m2"] * SYSTEM_SIZE * BATTERY_CONFIG.efficiency;
       let load = 0;
       const activeAppliances: Array<{ name: string; power: number; isActive: boolean }> = [];
 
@@ -211,7 +211,7 @@ export async function GET(request: Request) {
 
       return {
         hour,
-        ALLSKY_SFC_SW_DWN: entry.ALLSKY_SFC_SW_DWN,
+        irradiance: entry["corrected_irradiance_kWh/m2"],
         solar,
         load,
         soc: currentSoC,

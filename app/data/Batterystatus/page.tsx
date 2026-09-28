@@ -116,7 +116,6 @@ export default function BatteryStatusPage() {
   const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
   const [appliances, setAppliances] = useState<Appliance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
   
   const router = useRouter();
   const supabase = createClientComponentClient();
@@ -163,13 +162,11 @@ export default function BatteryStatusPage() {
   useEffect(() => {
     const loadUserAndSystem = async () => {
       try {
-        let currentUser: any = { id: 'dev-user' };
+        let currentUser: { id: string } = { id: 'dev-user' };
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) currentUser = session.user;
         } catch {}
-
-        setUser(currentUser);
 
         // Load system configuration and appliances
         const [savedSystem, savedAppliances] = await Promise.all([
@@ -235,7 +232,6 @@ export default function BatteryStatusPage() {
     const batteryCapacityKwh = (systemConfig.battery_capacity * 12) / 1000; // Convert Ah to kWh (assuming 12V)
     const minSoCPercent = 20; // Fixed at 20% as per document
     const minSoCKwh = (batteryCapacityKwh * minSoCPercent) / 100;
-    const usableCapacity = batteryCapacityKwh - minSoCKwh;
     const systemSizeKw = (systemConfig.panel_rating * systemConfig.number_of_panels) / 1000;
     
     // Use base efficiency without aging factor for now
@@ -740,9 +736,6 @@ export default function BatteryStatusPage() {
                       label: function(context) {
                         const label = context.dataset.label || '';
                         const value = context.raw as number;
-                        const viewType = view === 'monthly' ? 'day' : view === 'yearly' ? 'month' : 'hour';
-                        const timeLabel = context.label;
-                        
                         if (label === 'Battery Level') {
                           return `${label}: ${value.toFixed(1)}% (Base level)`;
                         } else if (label === 'Charging') {

@@ -42,8 +42,10 @@ interface Appliance {
 interface UsageData {
   time: string;
   date: Date;
-  [key: string]: any; // Dynamic appliance usage
+  [key: string]: string | Date | number;
 }
+
+type UsageTotals = Record<string, number>;
 
 // Default usage patterns for common appliances (can be overridden)
 const getUsagePattern = (applianceName: string, usageHours: number) => {
@@ -96,7 +98,6 @@ export default function BedroomEnergyUsage() {
   const [totalUsage, setTotalUsage] = useState<number>(0);
   const [appliances, setAppliances] = useState<Appliance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
   
   const router = useRouter();
   const supabase = createClientComponentClient();
@@ -105,13 +106,11 @@ export default function BedroomEnergyUsage() {
   useEffect(() => {
     const loadUserAndAppliances = async () => {
       try {
-        let currentUser: any = { id: 'dev-user' };
+        let currentUser: { id: string } = { id: 'dev-user' };
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) currentUser = session.user;
         } catch {}
-
-        setUser(currentUser);
 
         // Load appliances - filter for bedroom only
         const savedAppliances = await getUserInitialAppliances(currentUser, supabase);
@@ -209,7 +208,7 @@ export default function BedroomEnergyUsage() {
       allLabels = hourlyUsage.map(d => d.time);
     } else if (view === 'monthly') {
       const daysInMonth = new Date(PREDICTION_YEAR, selectedMonth + 1, 0).getDate();
-      const dailyTotals = Array(daysInMonth).fill(0).map(() => 
+      const dailyTotals: UsageTotals[] = Array(daysInMonth).fill(0).map(() =>
         Object.keys(applianceInfo).reduce((acc, id) => ({ ...acc, [id]: 0 }), {})
       );
 
@@ -217,7 +216,7 @@ export default function BedroomEnergyUsage() {
         const dayOfMonth = usage.date.getDate() - 1;
         if (dayOfMonth >= 0 && dayOfMonth < daysInMonth) {
           Object.keys(applianceInfo).forEach(applianceId => {
-            dailyTotals[dayOfMonth][applianceId] += usage[applianceId] || 0;
+            dailyTotals[dayOfMonth][applianceId] += Number(usage[applianceId]) || 0;
           });
         }
       });
@@ -230,7 +229,7 @@ export default function BedroomEnergyUsage() {
       }));
     } else {
       // Yearly view
-      const monthlyTotals = Array(12).fill(0).map(() => 
+      const monthlyTotals: UsageTotals[] = Array(12).fill(0).map(() =>
         Object.keys(applianceInfo).reduce((acc, id) => ({ ...acc, [id]: 0 }), {})
       );
 
@@ -238,7 +237,7 @@ export default function BedroomEnergyUsage() {
         const month = usage.date.getMonth();
         if (month >= 0 && month < 12) {
           Object.keys(applianceInfo).forEach(applianceId => {
-            monthlyTotals[month][applianceId] += usage[applianceId] || 0;
+            monthlyTotals[month][applianceId] += Number(usage[applianceId]) || 0;
           });
         }
       });
@@ -255,7 +254,7 @@ export default function BedroomEnergyUsage() {
     const colors = ['#f59e0b', '#ef4444', '#10b981', '#6366f1', '#8b5cf6', '#06b6d4', '#84cc16', '#f97316'];
     const datasets: ChartDataset<'line'>[] = filteredAppliances.map((appliance, idx) => ({
       label: appliance.appliance_name,
-      data: hourlyUsage.map((d) => d[appliance.id] || 0),
+      data: hourlyUsage.map((d) => Number(d[appliance.id]) || 0),
       borderColor: colors[idx % colors.length],
       backgroundColor: `${colors[idx % colors.length]}33`,
       tension: 0.4,
