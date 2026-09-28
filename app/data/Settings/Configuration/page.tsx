@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Save } from 'lucide-react';
-import { saveConfigAppliance, getUserConfigAppliances, deleteConfigAppliance } from '@/lib/db';
+import { saveConfigAppliance, getUserConfigAppliances, deleteConfigAppliance } from '@/lib/prototype';
 
 interface Appliance {
   id: string;
@@ -100,7 +100,7 @@ export default function Configuration() {
   };
 
   const saveConfiguration = () => {
-    // All data is already saved to Supabase, just show confirmation and redirect
+    // Configuration is held in memory for this prototype session.
     alert('All changes have been saved to your account!');
     // Redirect back to settings page
     window.location.href = '/data/Settings';

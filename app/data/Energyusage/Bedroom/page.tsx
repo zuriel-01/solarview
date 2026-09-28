@@ -6,8 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { getUserInitialAppliances } from '@/lib/db';
+import { getUserInitialAppliances } from '@/lib/prototype';
 import {
   Chart as ChartJS,
   LineElement,
@@ -100,20 +99,12 @@ export default function BedroomEnergyUsage() {
   const [loading, setLoading] = useState(true);
   
   const router = useRouter();
-  const supabase = createClientComponentClient();
-
   // Load user and appliances
   useEffect(() => {
     const loadUserAndAppliances = async () => {
       try {
-        let currentUser: { id: string } = { id: 'dev-user' };
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) currentUser = session.user;
-        } catch {}
-
         // Load appliances - filter for bedroom only
-        const savedAppliances = await getUserInitialAppliances(currentUser, supabase);
+        const savedAppliances = await getUserInitialAppliances();
         
         // Filter for bedroom appliances only
         const bedroomAppliances = savedAppliances.filter(
@@ -139,7 +130,7 @@ export default function BedroomEnergyUsage() {
     };
 
     loadUserAndAppliances();
-  }, [router, supabase]);
+  }, [router]);
 
   const getDateLabel = () => {
     if (view === 'daily') {

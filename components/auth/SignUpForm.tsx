@@ -3,7 +3,6 @@
 // import { useState } from 'react';
 // import { useRouter } from 'next/navigation';
 // import Link from 'next/link';
-// import { supabase } from '@/supabase';
 
 // export function SignUpForm() {
 //   const router = useRouter();
@@ -16,7 +15,6 @@
 //     setError('');
 
 //     try {
-//       const { data, error: signUpError } = await supabase.auth.signUp({
 //         email,
 //         password,
 //       });

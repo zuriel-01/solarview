@@ -8,13 +8,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, Save } from 'lucide-react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import {
   saveInitialAppliances,
   getUserInitialAppliances,
   saveSolarSystem,
-  getUserSolarSystem
-} from '@/lib/db';
+  getUserSolarSystem,
+} from '@/lib/prototype';
 
 interface Appliance {
   id: string;
@@ -26,9 +25,6 @@ interface Appliance {
 
 export default function ManageSystemAppliances() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
-  
-  const [user, setUser] = useState<{ id: string } | null>(null);
   const [appliances, setAppliances] = useState<Appliance[]>([]);
   const [newAppliance, setNewAppliance] = useState({
     name: '',
@@ -46,42 +42,15 @@ export default function ManageSystemAppliances() {
   });
 
   const [loading, setLoading] = useState(true);
-  const [authLoading, setAuthLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const rooms = ['Parlour', 'Kitchen', 'Bedroom'];
 
-  // Check authentication first
   useEffect(() => {
-    const checkAuth = async () => {
-      let currentUser: { id: string } = { id: 'dev-user' };
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) currentUser = session.user;
-      } catch {}
-      setUser(currentUser);
-      setAuthLoading(false);
-    };
-
-    checkAuth();
-  }, [router, supabase]);
-
-  // Load data only after auth is confirmed
-  useEffect(() => {
-    if (!user || authLoading) return;
-
     const loadData = async () => {
       try {
-        console.log('Starting to load data for user:', user.id);
-        
         // Load system data
-        let savedSystem = null;
-        try {
-          savedSystem = await getUserSolarSystem(user, supabase);
-          console.log('System data loaded:', savedSystem);
-        } catch (systemError) {
-          console.error('Error loading system data:', systemError);
-        }
+        const savedSystem = await getUserSolarSystem();
 
         if (savedSystem) {
           setSystem({
@@ -110,7 +79,7 @@ export default function ManageSystemAppliances() {
           room: string;
         }> = [];
         try {
-          savedAppliances = await getUserInitialAppliances(user, supabase);
+          savedAppliances = await getUserInitialAppliances();
           console.log('Appliances data loaded:', savedAppliances);
         } catch (applianceError) {
           console.error('Error loading appliances data:', applianceError);
@@ -147,7 +116,7 @@ export default function ManageSystemAppliances() {
     };
 
     loadData();
-  }, [user, authLoading, supabase]);
+  }, []);
 
   const addAppliance = () => {
     if (!newAppliance.name || !newAppliance.wattage || !newAppliance.usageHours || !newAppliance.room) {
@@ -176,11 +145,6 @@ export default function ManageSystemAppliances() {
   };
 
   const saveConfiguration = async () => {
-    if (!user) {
-      alert('Please log in to save configuration');
-      return;
-    }
-
     // Validate system fields
     if (!system.battery_capacity || !system.minimum_state_of_charge || 
         !system.installation_year || !system.panel_rating || !system.number_of_panels) {
@@ -215,7 +179,6 @@ export default function ManageSystemAppliances() {
 
     try {
       console.log('Starting save configuration...');
-      console.log('Current user:', user);
       console.log('System data:', system);
 
       // Save solar system
@@ -226,7 +189,7 @@ export default function ManageSystemAppliances() {
         installation_year: parseInt(system.installation_year),
         panel_rating: panelRating,
         number_of_panels: numPanels
-      }, user, supabase);
+      });
 
       console.log('Solar system saved successfully');
 
@@ -240,7 +203,7 @@ export default function ManageSystemAppliances() {
           room: a.room.toLowerCase()
         }));
 
-        await saveInitialAppliances(formattedAppliances, user, supabase);
+        await saveInitialAppliances(formattedAppliances);
         console.log('Appliances saved successfully');
       }
 
@@ -260,14 +223,6 @@ export default function ManageSystemAppliances() {
 
   const getTotalDailyUsage = () =>
     appliances.reduce((total, a) => total + a.wattage * a.usageHours, 0);
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 py-8">
-        <div className="max-w-6xl mx-auto px-4 text-center">Checking authentication...</div>
-      </div>
-    );
-  }
 
   if (loading) {
     return (

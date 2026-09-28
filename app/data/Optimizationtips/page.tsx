@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ChevronLeft, ChevronRight, Calendar, Zap, Sun, Battery, Plug, LineChart } from "lucide-react";
@@ -10,10 +9,7 @@ import Link from "next/link";
 import type { ReactElement } from 'react';
 import solarData from '../solarData.json';
 import { PREDICTION_YEAR } from '@/app/data/constants';
-import {
-  getUserSolarSystem,
-  getUserInitialAppliances,
-} from '@/lib/db';
+import { getUserInitialAppliances, getUserSolarSystem } from '@/lib/prototype';
 
 interface SystemConfig {
   battery_capacity: number;
@@ -296,22 +292,14 @@ export default function OptimizationTips() {
   const [optimizationTips, setOptimizationTips] = useState<Tip[]>([]);
   
   const router = useRouter();
-  const supabase = createClientComponentClient();
-
   // Load user and system configuration
   useEffect(() => {
     const loadUserAndSystem = async () => {
       try {
-        let currentUser: { id: string } = { id: 'dev-user' };
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) currentUser = session.user;
-        } catch {}
-
         // Load system configuration and appliances
         const [savedSystem, savedAppliances] = await Promise.all([
-          getUserSolarSystem(currentUser, supabase),
-          getUserInitialAppliances(currentUser, supabase)
+          getUserSolarSystem(),
+          getUserInitialAppliances()
         ]);
         
         if (!savedSystem) {
@@ -339,7 +327,7 @@ export default function OptimizationTips() {
     };
 
     loadUserAndSystem();
-  }, [router, supabase]);
+  }, [router]);
 
   const getDayData = (month: number, day: number): DayData | null => {
     if (!systemConfig || appliances.length === 0) return null;

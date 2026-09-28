@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 export default function SignUp() {
   const [email, setEmail] = useState('');
@@ -11,7 +10,6 @@ export default function SignUp() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClientComponentClient();
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,29 +17,10 @@ export default function SignUp() {
     setMessage(null);
     setLoading(true);
 
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data.session) {
-        // User is immediately signed in (email confirmation disabled)
-        router.push('/');
-      } else if (data.user && !data.session) {
-        // Email confirmation required
-        setMessage('Please check your email and click the confirmation link to complete your signup.');
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'An error occurred during sign up');
-    } finally {
-      setLoading(false);
-    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    setMessage('Prototype account ready. Your configuration will remain in memory for this session.');
+    router.push('/home');
+    setLoading(false);
   };
 
   return (

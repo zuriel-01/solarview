@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getUserInitialAppliances, getUserSolarSystem } from '@/lib/prototype';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Chart as ChartJS,
@@ -18,10 +18,6 @@ import solarData from '@/app/data/solarData.json';
 import { PREDICTION_YEAR } from '@/app/data/constants';
 import { getDailyUsageFactor } from '@/app/data/usageUtils';
 import { Button } from '@/components/ui/button';
-import {
-  getUserSolarSystem,
-  getUserInitialAppliances,
-} from '@/lib/db';
 
 ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
@@ -118,8 +114,6 @@ export default function BatteryStatusPage() {
   const [loading, setLoading] = useState(true);
   
   const router = useRouter();
-  const supabase = createClientComponentClient();
-
   // Helper function to calculate battery state for a single hour
   const calculateBatteryState = (entry: SolarEntry, currentSOC: number, systemConfig: SystemConfig, appliances: Appliance[]) => {
     const date = new Date(entry.timestamp);
@@ -162,16 +156,10 @@ export default function BatteryStatusPage() {
   useEffect(() => {
     const loadUserAndSystem = async () => {
       try {
-        let currentUser: { id: string } = { id: 'dev-user' };
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) currentUser = session.user;
-        } catch {}
-
         // Load system configuration and appliances
         const [savedSystem, savedAppliances] = await Promise.all([
-          getUserSolarSystem(currentUser, supabase),
-          getUserInitialAppliances(currentUser, supabase)
+          getUserSolarSystem(),
+          getUserInitialAppliances()
         ]);
         
         if (!savedSystem) {
@@ -195,7 +183,7 @@ export default function BatteryStatusPage() {
     };
 
     loadUserAndSystem();
-  }, [router, supabase]);
+  }, [router]);
 
   useEffect(() => {
     if (!systemConfig || appliances.length === 0) {

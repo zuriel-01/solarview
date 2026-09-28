@@ -3,7 +3,6 @@
 // import { useState } from "react";
 // import { useRouter } from "next/navigation";
 // import Link from "next/link";
-// import { supabase } from "@/supabase";
 
 // export function LoginForm() {
 //   const router = useRouter();
@@ -16,7 +15,6 @@
 //     setError("");
 
 //     try {
-//       const { data, error: signInError } = await supabase.auth.signInWithPassword({
 //         email,
 //         password,
 //       });

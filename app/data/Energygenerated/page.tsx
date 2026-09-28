@@ -6,8 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { getUserSolarSystem } from '@/lib/db';
+import { getUserSolarSystem } from '@/lib/prototype';
 import {
   Chart as ChartJS,
   LineElement,
@@ -54,20 +53,12 @@ export default function EnergyGenerated() {
   const [loading, setLoading] = useState(true);
   
   const router = useRouter();
-  const supabase = createClientComponentClient();
-
   // Load user and system configuration
   useEffect(() => {
     const loadUserAndSystem = async () => {
       try {
-        let currentUser: { id: string } = { id: 'dev-user' };
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) currentUser = session.user;
-        } catch {}
-
         // Load system configuration
-        const savedSystem = await getUserSolarSystem(currentUser, supabase);
+        const savedSystem = await getUserSolarSystem();
         
         if (!savedSystem) {
           // No system configuration found, redirect to setup
@@ -90,7 +81,7 @@ export default function EnergyGenerated() {
     };
 
     loadUserAndSystem();
-  }, [router, supabase]);
+  }, [router]);
 
   const getDateLabel = () => {
     if (view === 'daily') {

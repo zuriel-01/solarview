@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -10,34 +9,15 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClientComponentClient();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-
-      if (data.session) {
-        // Wait a moment for session to be established
-        setTimeout(() => {
-          router.refresh();
-          router.push('/home');
-        }, 100);
-      }
-    } catch (error) {
-      console.log(error);
-      setError(error instanceof Error ? error.message : 'An error occurred during login');
-    } finally {
-      setLoading(false);
-    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    router.push('/home');
+    setLoading(false);
   };
 
   return (

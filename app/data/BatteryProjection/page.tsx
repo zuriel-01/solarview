@@ -8,7 +8,6 @@ import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -21,10 +20,7 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import {
-  getUserSolarSystem,
-  getUserInitialAppliances,
-} from '@/lib/db';
+import { getUserInitialAppliances, getUserSolarSystem } from '@/lib/prototype';
 import solarData from '@/app/data/solarData.json';
 import { getDailyUsageFactor } from '@/app/data/usageUtils';
 
@@ -140,20 +136,13 @@ export default function BatteryProjectionPage() {
     const [loading, setLoading] = useState(true);
     
     const router = useRouter();
-    const supabase = createClientComponentClient();
 
     useEffect(() => {
         const loadInitialData = async () => {
             try {
-                let currentUser: { id: string } = { id: 'dev-user' };
-                try {
-                  const { data: { session } } = await supabase.auth.getSession();
-                  if (session?.user) currentUser = session.user;
-                } catch {}
-
-                const [systemData, appliancesData] = await Promise.all([
-                    getUserSolarSystem(currentUser, supabase),
-                    getUserInitialAppliances(currentUser, supabase),
+                                const [systemData, appliancesData] = await Promise.all([
+                                        getUserSolarSystem(),
+                                        getUserInitialAppliances(),
                 ]);
 
                 if (systemData) {
@@ -184,7 +173,7 @@ export default function BatteryProjectionPage() {
         };
 
         loadInitialData();
-    }, [router, supabase]);
+    }, [router]);
 
     const handleInputChange = (field: keyof ProjectionInput, value: number | string) => {
         setInputs(prev => ({ ...prev, [field]: value }));
