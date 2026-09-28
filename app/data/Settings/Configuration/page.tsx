@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Save } from 'lucide-react';
 import { saveConfigAppliance, getUserConfigAppliances, deleteConfigAppliance } from '@/lib/prototype';
 
@@ -18,6 +19,7 @@ interface Appliance {
 }
 
 export default function Configuration() {
+  const router = useRouter();
   const [appliances, setAppliances] = useState<Appliance[]>([]);
   const [loading, setLoading] = useState(true);
   const [newAppliance, setNewAppliance] = useState({
@@ -33,11 +35,7 @@ export default function Configuration() {
     'Bedroom'
   ];
 
-  useEffect(() => {
-    loadAppliances();
-  }, []);
-
-  const loadAppliances = async () => {
+  const loadAppliances = useCallback(async () => {
     try {
       const data = await getUserConfigAppliances();
       const formattedData = data.map(item => ({
@@ -54,7 +52,11 @@ export default function Configuration() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadAppliances();
+  }, [loadAppliances]);
 
   const addAppliance = async () => {
     if (!newAppliance.name || !newAppliance.wattage || !newAppliance.usageHours || !newAppliance.room) {
@@ -103,7 +105,7 @@ export default function Configuration() {
     // Configuration is held in memory for this prototype session.
     alert('All changes have been saved to your account!');
     // Redirect back to settings page
-    window.location.href = '/data/Settings';
+    router.push('/data/Settings');
   };
 
   const getTotalWattage = () => {
